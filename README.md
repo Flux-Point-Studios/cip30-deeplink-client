@@ -2,33 +2,93 @@
 
 Reference TypeScript SDK for **CIP-30-DeepLink** — a deep-link wire protocol that lets a native mobile dApp ask an installed Cardano wallet to perform CIP-30 operations (`signTx`, `signData`, etc.) over the OS's URL-handling mechanism. No relay server, no embedded WebView, no QR, no WebSocket.
 
-This repository is the **dApp-side reference implementation** that accompanies the CIP draft. The wallet-side reference implementation is [Flux-Point-Studios/yuti](https://github.com/Flux-Point-Studios/yuti).
+This repository is the **dApp-side reference implementation** that accompanies the CIP draft. The wallet-side reference implementation is [Flux-Point-Studios/yuti](https://github.com/Flux-Point-Studios/yuti); the wire format here is byte-for-byte interoperable with it.
 
 ## Status
 
-Pre-release. The CIP itself is open for community review at:
+Pre-release (`0.1.x`). The CIP is open for community review at:
 
 - **CIP PR**: <https://github.com/cardano-foundation/CIPs/pull/1189>
 - **Forum thread**: <https://forum.cardano.org/t/cip-proposal-mobile-deep-link-signing-for-native-dapps-cip-30-extension/154561>
 
-The SDK source will land here once the CIP clears Triage. Until then, this repo holds:
+## Install
 
-- the canonical link target for the CIP's *Reference Implementation* section
-- the design notes that drive the SDK's public surface
+```bash
+npm install @fluxpoint/cip30-deeplink-client
+```
 
-## Anticipated public surface
+Runtime dependency: `tweetnacl` (NaCl-box + Ed25519). Runs in the browser and Node.
+
+## How it works
+
+A deep-link round-trip is **not** a single call: the dApp navigates to the wallet, the wallet processes the request and redirects back to the dApp's `redirect` URL with the response in the query string. In a browser that is a full page navigation, so the SDK persists the in-flight request and you recover the result on the **next page load** with `resume()`.
 
 ```typescript
 import { DeepLinkClient } from "@fluxpoint/cip30-deeplink-client";
 
-const client = new DeepLinkClient({ wallet: "yuti", chain: "cardano:preprod" });
-const session = await client.connect({
-  name: "Aegis",
-  url: "https://aegis.fluxpointstudios.com",
+const client = new DeepLinkClient({
+  wallet: "yuti",                 // deep-link scheme: cip30dl-yuti
+  chain: "cardano:preprod",
+  // resolveTxHash: resolveTxHash, // wire your tx builder's hash for signTx
 });
-const { witnessSet, txHash } = await client.signTx({ tx: cborHex, partialSign: false });
-const signedTx = client.assemble(cborHex, witnessSet);
-await fetch("/api/tx/submit", { method: "POST", body: signedTx });
+
+// 1. On every page load, first recover any pending wallet response.
+const resumed = await client.resume();
+if (resumed?.kind === "connect") {
+  // resumed.session — { addresses, signingPublicKey, chain, ... } (now stored)
+}
+if (resumed?.kind === "signTx") {
+  const { witnessSet, txHash, signatureValid } = resumed.result;
+}
+
+// 2. Start a flow (navigates to the wallet; returns on the redirect → resume()).
+await client.connect({ name: "Aegis", url: "https://aegis.fluxpointstudios.com" });
+
+// 3. Once connected, request a signature.
+await client.signTx({ tx: cborHex });        // needs resolveTxHash, or pass commit
+```
+
+### Computing the commit (tx hash)
+
+`signTx` binds the request to `commit = BLAKE2b-256(tx_body)` — the Cardano transaction hash. The SDK stays dependency-light and does **not** bundle a serialization library, so either:
+
+- wire your tx builder's hasher once: `new DeepLinkClient({ ..., resolveTxHash: (cbor) => resolveTxHash(cbor) })` (MeshJS `resolveTxHash`, Lucid, or CSL `hash_transaction`), or
+- pass it per call: `client.signTx({ tx, commit })` where `commit` is base64url of the 32-byte hash.
+
+### Assembling & submitting
+
+The wallet returns a **witness set**, not a signed tx. Splice it into the body with your serialization library, or send `{ txCbor, witnessSet }` to your backend to assemble + submit (what the Aegis demo does — keeps CSL/Mesh off the client).
+
+### Verification
+
+Every `signTx` response carries the wallet's Ed25519 signature over the canonical subject, keyed by the `signingPublicKey` advertised at `connect`. `resume()` verifies it and **rejects** the result if it does not check out — a returned witness is always signature-verified.
+
+## API surface
+
+- `new DeepLinkClient(options)` — `{ wallet, chain, redirectUrl?, storage?, resolveTxHash? }`
+- `connect(dappInfo)` / `signTx(opts)` — start a flow (navigate to the wallet)
+- `resume(url?)` — recover the pending response; returns the connect session, the signTx result, or `null`
+- `getSession()` / `disconnect()`
+- Low-level pure helpers (custom transports, server-side, testing): `buildConnectUrl`, `buildSignTxUrl`, `decodeConnectResponse`, `decodeSignTxResponse`, `canonicalSubject`, `b64uEncode/Decode`
+
+Outside a browser, pass `redirectUrl`, a `storage` (a `localStorage`-shaped object), and a `navigate` adapter.
+
+## Example
+
+`examples/aegis-web/` is the Aegis demo dApp driven entirely by this SDK (connect → signTx → verify). Build the SDK, then serve the folder over http:
+
+```bash
+npm install && npm run build
+npx serve examples/aegis-web    # ESM modules need http, not file://
+```
+
+## Develop
+
+```bash
+npm install
+npm test          # vitest — incl. a connect+signTx round-trip vs a Yuti-compatible wallet
+npm run typecheck
+npm run build     # dist/ (ESM + CJS + d.ts) via tsup
 ```
 
 ## Scope of this repository

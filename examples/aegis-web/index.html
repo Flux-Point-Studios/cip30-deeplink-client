@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Aegis Demo dApp — cip30-deeplink-client</title>
+<style>
+  :root { --bg:#0A0E1A; --accent:#3B82F6; --ok:#22C55E; --card:rgba(255,255,255,.04); --border:rgba(255,255,255,.1); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:#fff; font-family:-apple-system,Roboto,Segoe UI,sans-serif; min-height:100vh; padding:24px; }
+  .wrap { max-width:480px; margin:0 auto; }
+  .hdr { text-align:center; margin:20px 0 28px; }
+  .badge { width:72px; height:72px; border-radius:50%; margin:0 auto 16px; background:linear-gradient(135deg,var(--accent),rgba(59,130,246,.5)); display:flex; align-items:center; justify-content:center; font-size:34px; box-shadow:0 0 28px rgba(59,130,246,.4); }
+  h1 { font-size:26px; margin:0; font-weight:800; }
+  .sub { color:rgba(255,255,255,.5); font-size:14px; margin-top:4px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:20px; margin-bottom:20px; }
+  .card.done { border-color:rgba(34,197,94,.5); }
+  .card.dim { opacity:.4; }
+  .row { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .step { width:26px; height:26px; border-radius:50%; background:rgba(59,130,246,.25); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex:0 0 auto; }
+  .step.done { background:var(--ok); }
+  .title { font-size:17px; font-weight:600; }
+  button { width:100%; border:0; border-radius:14px; padding:16px; font-size:16px; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { background:rgba(59,130,246,.3); cursor:default; }
+  button.ghost { background:transparent; border:1px solid rgba(59,130,246,.6); color:var(--accent); }
+  .kv { margin-bottom:10px; }
+  .kv .k { color:rgba(255,255,255,.5); font-size:12px; }
+  .kv .v { font-size:13px; word-break:break-all; }
+  .mono { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .verified { color:var(--ok); font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .err { background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.4); border-radius:12px; padding:14px; font-size:13px; margin-bottom:20px; }
+  .reset { background:none; border:0; color:rgba(255,255,255,.45); font-size:13px; width:auto; padding:8px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="badge">🛡️</div>
+    <h1>Aegis Demo dApp</h1>
+    <div class="sub">CIP-30-DeepLink · driven by @fluxpoint/cip30-deeplink-client</div>
+  </div>
+
+  <div class="card" id="connectCard">
+    <div class="row"><div class="step" id="step1">1</div><div class="title">Connect wallet</div></div>
+    <div id="connectBody"><button id="connectBtn">Connect with Yuti</button></div>
+  </div>
+
+  <div class="card dim" id="signCard">
+    <div class="row"><div class="step" id="step2">2</div><div class="title">Sign a transaction</div></div>
+    <div id="signBody"><button id="signBtn" disabled>Sign transaction</button></div>
+  </div>
+
+  <div id="errBox"></div>
+  <div style="text-align:center"><button class="reset" id="resetBtn">↻ Reset</button></div>
+</div>
+
+<script type="module">
+// The SDK handles all crypto, the deep-link wire format, and state persistence;
+// the dApp only calls connect()/signTx() and resume(). Build first: `npm run
+// build` in the repo root, then serve this folder over http (ESM needs http).
+import { DeepLinkClient, DeepLinkRejection } from '../../dist/index.js';
+
+// A fixed sample tx; pass its commit (= tx hash) directly so the browser demo
+// needs no serialization library. A real dApp wires `resolveTxHash` (MeshJS,
+// Lucid, CSL) into the client and just calls signTx({ tx }).
+const SAMPLE_TX = '84a40080018002000300a0f5f6';
+const SAMPLE_COMMIT = '70nHDrWf4mf3hHqHaxw4taE5vZWbQvUMIJOQyuQoiBo';
+
+const client = new DeepLinkClient({ wallet: 'yuti', chain: 'cardano:preprod' });
+
+const $ = (id) => document.getElementById(id);
+const short = (s) => (s && s.length > 22 ? s.slice(0, 11) + '…' + s.slice(-8) : s);
+let lastResult = null;
+let error = null;
+
+function render() {
+  const session = client.getSession();
+  const connected = !!session;
+  const signed = !!lastResult;
+
+  $('step1').classList.toggle('done', connected);
+  $('step1').textContent = connected ? '✓' : '1';
+  $('connectCard').classList.toggle('done', connected);
+  $('connectBody').innerHTML = connected
+    ? `<div class="kv"><div class="k">Address</div><div class="v mono">${session.addresses[0]}</div></div>
+       <div class="kv"><div class="k">Network</div><div class="v">${session.chain}</div></div>
+       <div class="kv"><div class="k">Session signing key</div><div class="v mono">${short(session.signingPublicKey)}</div></div>`
+    : `<button id="connectBtn">Connect with Yuti</button>`;
+
+  $('signCard').classList.toggle('dim', !connected);
+  $('signCard').classList.toggle('done', signed);
+  $('step2').classList.toggle('done', signed);
+  $('step2').textContent = signed ? '✓' : '2';
+  $('signBody').innerHTML = signed
+    ? `<div class="verified">${lastResult.signatureValid ? '✅ Response signature verified' : '❌ Signature INVALID'}</div>
+       <div class="kv"><div class="k">Tx hash</div><div class="v mono">${short(lastResult.txHash)}</div></div>
+       <div class="kv"><div class="k">Witness set</div><div class="v mono">${short(lastResult.witnessSet)}</div></div>
+       <button class="ghost" id="againBtn">↻ Run demo again</button>`
+    : `<button id="signBtn" ${connected ? '' : 'disabled'}>Sign transaction</button>`;
+
+  $('errBox').innerHTML = error ? `<div class="err">⚠️ ${error}</div>` : '';
+  wire();
+}
+
+function wire() {
+  const c = $('connectBtn');
+  if (c) c.onclick = () => client.connect({ name: 'Aegis Web Demo', url: location.origin });
+  const s = $('signBtn');
+  if (s && !s.disabled) s.onclick = () => client.signTx({ tx: SAMPLE_TX, commit: SAMPLE_COMMIT });
+  const a = $('againBtn');
+  if (a) a.onclick = () => { client.disconnect(); lastResult = null; error = null; render(); };
+}
+$('resetBtn').onclick = () => { client.disconnect(); lastResult = null; error = null; render(); };
+
+// Recover any wallet response after the redirect back.
+try {
+  const resumed = await client.resume();
+  if (resumed?.kind === 'signTx') lastResult = resumed.result;
+} catch (e) {
+  error = e instanceof DeepLinkRejection ? `Wallet rejected (code ${e.errorCode})` : 'Decode failed: ' + e.message;
+}
+render();
+</script>
+</body>
+</html>
