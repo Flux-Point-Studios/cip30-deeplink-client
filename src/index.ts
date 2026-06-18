@@ -28,5 +28,9 @@ export {
   type ConnectUrlParams,
   type SignTxUrlParams,
 } from './protocol.js';
-export { canonicalSubject, SUBJECT_DOMAIN_SEPARATOR } from './canonical.js';
+export {
+  canonicalSubject,
+  canonicalSubjectCandidates,
+  SUBJECT_DOMAIN_SEPARATOR,
+} from './canonical.js';
 export { b64uDecode, b64uEncode } from './base64url.js';

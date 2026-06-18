@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalSubject, strictUnreservedEncode } from '../src/canonical.js';
+import {
+  canonicalSubject,
+  canonicalSubjectCandidates,
+  strictUnreservedEncode,
+} from '../src/canonical.js';
 
 describe('canonicalSubject (parity with Yuti AttestationBuilder)', () => {
   it('matches the byte-exact contract: domain sep, lowercased host, sorted query', () => {
@@ -34,5 +38,31 @@ describe('canonicalSubject (parity with Yuti AttestationBuilder)', () => {
     expect(strictUnreservedEncode('a b/c')).toBe('a%20b%2Fc');
     expect(strictUnreservedEncode('A.Z_9~-')).toBe('A.Z_9~-'); // unreserved kept
     expect(strictUnreservedEncode('é')).toBe('%C3%A9'); // 2-byte UTF-8
+  });
+});
+
+describe('canonicalSubjectCandidates (cross-impl empty-path robustness)', () => {
+  it('covers BOTH the slash-less and slash forms for an authority-only redirect', () => {
+    // Yuti (Dart Uri.path) signs with NO slash; WHATWG/browser may show "/".
+    // The SDK must accept either so a path-less redirect verifies.
+    const cands = canonicalSubjectCandidates(
+      'https://aegis.fluxpointstudios.com?response=approved&nonce=AAAA&payload=BBBB&signature=CCCC',
+    );
+    expect(cands).toContain(
+      'cip30dl-v1\nhttps://aegis.fluxpointstudios.com?nonce=AAAA&payload=BBBB&response=approved',
+    );
+    expect(cands).toContain(
+      'cip30dl-v1\nhttps://aegis.fluxpointstudios.com/?nonce=AAAA&payload=BBBB&response=approved',
+    );
+  });
+
+  it('is a single strict subject when the redirect carries a real path', () => {
+    expect(
+      canonicalSubjectCandidates(
+        'https://aegis.fluxpointstudios.com/cb?response=approved&nonce=AAAA',
+      ),
+    ).toEqual([
+      'cip30dl-v1\nhttps://aegis.fluxpointstudios.com/cb?nonce=AAAA&response=approved',
+    ]);
   });
 });

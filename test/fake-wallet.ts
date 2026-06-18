@@ -2,8 +2,38 @@
 // session key over the canonical subject), used to exercise the SDK end-to-end.
 import nacl from 'tweetnacl';
 import { b64uDecode, b64uEncode, utf8Decode, utf8Encode } from '../src/base64url.js';
-import { canonicalSubject } from '../src/canonical.js';
 import { bytesToHex } from '../src/protocol.js';
+
+// Independent, Dart-style canonical subject — mirrors the Yuti WALLET's
+// AttestationBuilder.canonicalSubject (which derives the path from Dart's
+// `Uri.path`, so an authority-only redirect signs over an EMPTY path, no
+// slash). Deliberately NOT the SDK's canonicalSubject, so the round-trip test
+// actually exercises cross-implementation parity instead of masking it.
+const SUBJECT_SEP = 'cip30dl-v1\n';
+const UNRESERVED = /[A-Za-z0-9._~-]/;
+function strictEnc(s: string): string {
+  let o = '';
+  for (const b of utf8Encode(s)) {
+    const c = String.fromCharCode(b);
+    o += UNRESERVED.test(c) ? c : '%' + b.toString(16).toUpperCase().padStart(2, '0');
+  }
+  return o;
+}
+function walletCanonicalSubject(responseUrl: string): string {
+  const u = new URL(responseUrl);
+  const host = u.hostname.toLowerCase();
+  const port = u.port ? ':' + u.port : '';
+  // Dart Uri.path semantics: '' when the URL is authority-only (no '/' after host).
+  const hasPath = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]+\//i.test(responseUrl);
+  const path = hasPath ? u.pathname : '';
+  const pairs: Array<[string, string]> = [];
+  u.searchParams.forEach((v, k) => {
+    if (k !== 'signature') pairs.push([k, v]);
+  });
+  pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const q = pairs.map(([k, v]) => `${strictEnc(k)}=${strictEnc(v)}`).join('&');
+  return `${SUBJECT_SEP}${u.protocol.replace(':', '')}://${host}${port}${path}?${q}`;
+}
 
 export function parseParams(url: string): Record<string, string> {
   const q = url.slice(url.indexOf('?') + 1);
@@ -66,7 +96,7 @@ export class FakeYutiWallet {
       `${this.redirect}?response=approved` +
       `&nonce=${b64uEncode(wnonce)}` +
       `&payload=${b64uEncode(cipher)}`;
-    const sig = nacl.sign.detached(utf8Encode(canonicalSubject(base)), this.sign.secretKey);
+    const sig = nacl.sign.detached(utf8Encode(walletCanonicalSubject(base)), this.sign.secretKey);
     return { responseUrl: `${base}&signature=${b64uEncode(sig)}`, requestTx };
   }
 

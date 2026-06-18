@@ -20,19 +20,12 @@ export function strictUnreservedEncode(input: string): string {
   return out;
 }
 
-/**
- * Returns the canonical byte-string (as a JS string; sign over its UTF-8 bytes)
- * the wallet Ed25519-signs for a response. The `signature` parameter is
- * excluded; remaining params are stable-sorted by key. Mirrors the six-step
- * procedure in spec §Response signing §Signature construction.
- */
-export function canonicalSubject(responseUrl: string | URL): string {
-  const url = typeof responseUrl === 'string' ? new URL(responseUrl) : responseUrl;
-  const host = url.hostname.toLowerCase();
-  const port = url.port ? ':' + url.port : '';
-  const schemeAndAuthority =
-    url.protocol.replace(':', '') + '://' + host + port + url.pathname;
+function asUrl(responseUrl: string | URL): URL {
+  return typeof responseUrl === 'string' ? new URL(responseUrl) : responseUrl;
+}
 
+/** The signature-stripped, key-sorted, strict-encoded query string. */
+function encodedQuery(url: URL): string {
   const pairs: Array<[string, string]> = [];
   url.searchParams.forEach((v, k) => {
     if (k !== 'signature') pairs.push([k, v]);
@@ -40,10 +33,51 @@ export function canonicalSubject(responseUrl: string | URL): string {
   // Stable sort by key (insertion order preserved for equal keys), matching the
   // wallet's `compareTo`-with-stable-fallback.
   pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-
-  const encoded = pairs
+  return pairs
     .map(([k, v]) => `${strictUnreservedEncode(k)}=${strictUnreservedEncode(v)}`)
     .join('&');
+}
 
-  return `${SUBJECT_DOMAIN_SEPARATOR}${schemeAndAuthority}?${encoded}`;
+function subjectWith(url: URL, path: string, query: string): string {
+  const host = url.hostname.toLowerCase();
+  const port = url.port ? ':' + url.port : '';
+  return `${SUBJECT_DOMAIN_SEPARATOR}${url.protocol.replace(':', '')}://${host}${port}${path}?${query}`;
+}
+
+/**
+ * Returns the canonical byte-string (as a JS string; sign over its UTF-8 bytes)
+ * the wallet Ed25519-signs for a response. The `signature` parameter is
+ * excluded; remaining params are stable-sorted by key. Mirrors the six-step
+ * procedure in spec §Response signing §Signature construction.
+ *
+ * Note: for an authority-only URL with no path, this uses WHATWG `URL.pathname`
+ * (`'/'`). The *path* of a path-less redirect is canonicalized inconsistently
+ * across URL libraries (`''` in RFC-3986 / Dart `Uri.path`, `'/'` in WHATWG),
+ * and the received URL may already have been normalized by the browser/OS — so
+ * for VERIFICATION use [canonicalSubjectCandidates], which accepts both forms.
+ */
+export function canonicalSubject(responseUrl: string | URL): string {
+  const url = asUrl(responseUrl);
+  return subjectWith(url, url.pathname, encodedQuery(url));
+}
+
+/**
+ * All canonical subjects a conformant wallet could have signed for this
+ * response, to verify against robustly. Identical to [canonicalSubject] except
+ * that for a root/empty path it also yields the `''` and `'/'` path variants —
+ * closing the cross-implementation empty-path ambiguity (Dart `Uri.path` `''`
+ * vs WHATWG `URL.pathname` `'/'`) and any browser/OS normalization of the
+ * received URL. Both variants describe the same dApp-controlled redirect, so
+ * accepting either is safe (the host is independently validated; the params and
+ * signature are unchanged).
+ */
+export function canonicalSubjectCandidates(responseUrl: string | URL): string[] {
+  const url = asUrl(responseUrl);
+  const query = encodedQuery(url);
+  const out = new Set<string>([subjectWith(url, url.pathname, query)]);
+  if (url.pathname === '/' || url.pathname === '') {
+    out.add(subjectWith(url, '', query));
+    out.add(subjectWith(url, '/', query));
+  }
+  return [...out];
 }

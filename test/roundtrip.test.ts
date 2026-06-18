@@ -81,6 +81,44 @@ describe('connect + signTx round-trip against a Yuti-compatible wallet', () => {
     expect(result.witnessSet).toBe(bytesToHex(wallet.witness));
   });
 
+  it('signTx with a path-less (bare-origin) redirect still verifies (empty-path parity)', () => {
+    // Regression for the canonical-subject path divergence: Yuti signs a
+    // path-less redirect with NO slash (Dart Uri.path = ''); the SDK must
+    // verify it even though WHATWG URL.pathname normalizes to '/'. The fake
+    // wallet signs the Dart-style subject independently (fake-wallet.ts), so
+    // this genuinely exercises cross-impl parity. Would fail before the fix.
+    const dapp = nacl.box.keyPair();
+    const bare = 'https://aegis.fluxpointstudios.com'; // no path
+    const wallet = new FakeYutiWallet(bare);
+    const session = decodeConnectResponse({
+      responseUrl: wallet.handleConnect(
+        buildConnectUrl({
+          scheme: SCHEME,
+          chain: 'cardano:preprod',
+          redirectUrl: bare,
+          dappInfo: { name: 'Aegis', url: bare },
+          dappPublicKey: dapp.publicKey,
+          nonce: nacl.randomBytes(24),
+        }),
+      ),
+      dappSecretKey: dapp.secretKey,
+    });
+    const signUrl = buildSignTxUrl({
+      scheme: SCHEME,
+      redirectUrl: bare,
+      dappPublicKey: dapp.publicKey,
+      dappSecretKey: dapp.secretKey,
+      walletPublicKey: b64uDecode(session.walletKey),
+      commit: new Uint8Array(32).fill(7),
+      payload: { session: session.session, tx: '84a4', partialSign: true, vkeyHints: [] },
+      nonce: nacl.randomBytes(24),
+      ttl: 1900000000,
+    });
+    const { responseUrl } = wallet.handleSignTx(signUrl);
+    const result = decodeSignTxResponse({ responseUrl, dappSecretKey: dapp.secretKey, session });
+    expect(result.signatureValid).toBe(true);
+  });
+
   it('signTx: a tampered response signature fails verification', () => {
     const dapp = nacl.box.keyPair();
     const wallet = new FakeYutiWallet(REDIRECT);

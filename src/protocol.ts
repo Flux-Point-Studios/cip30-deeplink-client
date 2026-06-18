@@ -9,7 +9,7 @@ import {
   utf8Decode,
   utf8Encode,
 } from './base64url.js';
-import { canonicalSubject } from './canonical.js';
+import { canonicalSubjectCandidates } from './canonical.js';
 import { boxOpen, boxSeal, verifyEd25519 } from './crypto.js';
 import { DeepLinkRejection, type DappInfo, type Session } from './types.js';
 
@@ -166,10 +166,10 @@ export function decodeSignTxResponse(args: {
     args.dappSecretKey,
   );
   if (!witness) throw new Error('signTx response decryption failed');
-  const signatureValid = verifyEd25519(
-    utf8Encode(canonicalSubject(args.responseUrl)),
-    b64uDecode(signatureB64),
-    b64uDecode(args.session.signingPublicKey),
+  const signature = b64uDecode(signatureB64);
+  const signingPublicKey = b64uDecode(args.session.signingPublicKey);
+  const signatureValid = canonicalSubjectCandidates(args.responseUrl).some(
+    (subject) => verifyEd25519(utf8Encode(subject), signature, signingPublicKey),
   );
   return { witnessSet: bytesToHex(witness), signatureValid };
 }
