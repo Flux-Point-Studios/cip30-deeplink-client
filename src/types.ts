@@ -41,7 +41,29 @@ export interface DeepLinkClientOptions {
    * explicit `commit`.
    */
   resolveTxHash?: (txCbor: string) => string;
+  /**
+   * signTx/signData wire format the target wallet implements:
+   *   - `sdk-legacy` (default): hex `tx` in the request; the response decrypts
+   *     to the raw `transaction_witness_set` CBOR. Yuti follows this.
+   *   - `spec`: CIP-0186 vectors — `tx` is `base64url(CBOR)`; the response is the
+   *     `{ commit, witnessSet, txHash }` envelope and the dApp MUST verify the
+   *     `commit` echo (mismatch ⇒ `-2 CommitMismatch`). Gero follows this.
+   * `connect` is byte-identical across both formats.
+   */
+  signFormat?: SignFormat;
+  /**
+   * Optional https universal-link prefix the wallet advertises (e.g.
+   * `https://cip30dl.gerowallet.io/cip30dl/v1/`). When set, connect/signTx
+   * requests use the https form (`<prefix>connect`) instead of the custom
+   * scheme (`cip30dl-<wallet>:/v1/connect`). iOS Safari opens universal links
+   * reliably but silently drops custom-scheme navigations, so wallets that
+   * ship a prefix should use it. Omit to use the custom scheme (Yuti).
+   */
+  httpsPrefix?: string;
 }
+
+/** signTx/signData wire format — see {@link DeepLinkClientOptions.signFormat}. */
+export type SignFormat = 'sdk-legacy' | 'spec';
 
 /** The session the wallet establishes at connect (decrypted session JSON). */
 export interface Session {
@@ -87,11 +109,12 @@ export interface SignTxResult {
 
 /** A wallet-side rejection (`response=rejected`), surfaced as a thrown error. */
 export class DeepLinkRejection extends Error {
-  constructor(
-    readonly errorCode: number,
-    readonly walletMessage: string,
-  ) {
+  readonly errorCode: number;
+  readonly walletMessage: string;
+  constructor(errorCode: number, walletMessage: string) {
     super(`wallet rejected the request (code ${errorCode}): ${walletMessage}`);
     this.name = 'DeepLinkRejection';
+    this.errorCode = errorCode;
+    this.walletMessage = walletMessage;
   }
 }

@@ -9,6 +9,7 @@ export {
   type DeepLinkClientOptions,
   type KeyValueStore,
   type Session,
+  type SignFormat,
   type SignTxOptions,
   type SignTxResult,
 } from './types.js';
@@ -21,6 +22,7 @@ export {
   bytesToHex,
   decodeConnectResponse,
   decodeSignTxResponse,
+  endpointBase,
   hexToBytes,
   isResponseUrl,
   throwIfRejected,
