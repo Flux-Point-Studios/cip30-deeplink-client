@@ -18,7 +18,11 @@
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": ["cardano", "cip-30", "cip-186", "deep-link", "wallet", "mobile", "dapp"],
   "license": "Apache-2.0",
