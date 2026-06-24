@@ -14,7 +14,7 @@ Pre-release (`0.1.x`). The CIP is open for community review at:
 ## Install
 
 ```bash
-npm install @fluxpoint/cip30-deeplink-client
+npm install @fluxpointstudios/cip30-deeplink-client
 ```
 
 Runtime dependency: `tweetnacl` (NaCl-box + Ed25519). Runs in the browser and Node.
@@ -24,7 +24,7 @@ Runtime dependency: `tweetnacl` (NaCl-box + Ed25519). Runs in the browser and No
 A deep-link round-trip is **not** a single call: the dApp navigates to the wallet, the wallet processes the request and redirects back to the dApp's `redirect` URL with the response in the query string. In a browser that is a full page navigation, so the SDK persists the in-flight request and you recover the result on the **next page load** with `resume()`.
 
 ```typescript
-import { DeepLinkClient } from "@fluxpoint/cip30-deeplink-client";
+import { DeepLinkClient } from "@fluxpointstudios/cip30-deeplink-client";
 
 const client = new DeepLinkClient({
   wallet: "yuti",                 // deep-link scheme: cip30dl-yuti

@@ -1,5 +1,5 @@
 {
-  "name": "@fluxpoint/cip30-deeplink-client",
+  "name": "@fluxpointstudios/cip30-deeplink-client",
   "version": "0.1.0",
   "description": "Reference TypeScript SDK for CIP-30-DeepLink — mobile deep-link signing for Cardano dApps. Companion to cardano-foundation/CIPs#1189.",
   "type": "module",

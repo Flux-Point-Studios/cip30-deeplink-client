@@ -1,4 +1,4 @@
-// @fluxpoint/cip30-deeplink-client — dApp-side reference SDK for CIP-30-DeepLink
+// @fluxpointstudios/cip30-deeplink-client — dApp-side reference SDK for CIP-30-DeepLink
 // (cardano-foundation/CIPs#1189). Companion to the Yuti reference wallet.
 
 export { DeepLinkClient, type ResumeResult } from './client.js';
