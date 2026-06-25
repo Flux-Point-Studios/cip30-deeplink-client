@@ -10,6 +10,9 @@ Pre-release (`0.1.x`). The CIP is open for community review at:
 
 - **CIP PR**: <https://github.com/cardano-foundation/CIPs/pull/1189>
 - **Forum thread**: <https://forum.cardano.org/t/cip-proposal-mobile-deep-link-signing-for-native-dapps-cip-30-extension/154561>
+- **Live inspector** (debug your integration, no install): <https://flux-point-studios.github.io/cip30-deeplink-client/>
+
+**Wallet support.** Works with any wallet that implements the CIP-186 signed `connect`. Gero is verified end-to-end against this SDK; [Yuti](https://github.com/Flux-Point-Studios/yuti) is the wallet-side reference. The SDK is **fail-closed** — it will not seat a session from a wallet that has not shipped the signed handshake, so end-user signing requires one of those wallets. You can build and test your entire integration today without either (see below).
 
 ## Install
 
@@ -47,6 +50,18 @@ await client.connect({ name: "Aegis", url: "https://aegis.fluxpointstudios.com" 
 // 3. Once connected, request a signature.
 await client.signTx({ tx: cborHex });        // needs resolveTxHash, or pass commit
 ```
+
+That is the whole integration: **`resume()` first on every load**, then `connect()` / `signTx()`
+to start a flow. Both navigate to the wallet and return via the redirect, so the result always
+arrives through `resume()` on the next load — never as the return value of `connect`/`signTx`.
+
+> **Build and test with no wallet and no phone.** The
+> [live inspector](https://flux-point-studios.github.io/cip30-deeplink-client/) reproduces exactly
+> what `resume()` does — paste a `connect` response and every verification step (method tag, decrypt,
+> Ed25519 signature, nonce echo) lights up green/red, with the canonical subject and decrypted
+> session laid out. To round-trip `connect → signTx` offline, drive the bundled fake wallet
+> (`test/fake-wallet.ts`). `wallet` sets the deep-link scheme (`cip30dl-<wallet>`); for wallets that
+> advertise an https universal link, also pass `httpsPrefix`.
 
 ### Computing the commit (tx hash)
 
