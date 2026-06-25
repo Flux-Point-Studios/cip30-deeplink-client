@@ -2687,8 +2687,6 @@ var DEMO_REF = {
   responseNonce: new Uint8Array(24).fill(5)
 };
 var DEMO_REDIRECT = "https://aegis.example/cb";
-var currentDappSecret = DEMO_DAPP_SECRET;
-var currentNonce = DEMO_NONCE;
 var $ = (id) => document.getElementById(id);
 var val = (id) => $(id).value.trim();
 var setVal = (id, v) => {
@@ -2705,27 +2703,55 @@ function parseBytes(s) {
 function statusGlyph(status) {
   return status === "pass" ? "\u2713" : status === "fail" ? "\u2717" : status === "skip" ? "\u25CB" : "\u2139";
 }
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+function setBanner(cls, text) {
+  const b = $("verdict");
+  b.className = `verdict ${cls}`;
+  b.textContent = text;
+  b.classList.remove("flash");
+  void b.offsetWidth;
+  b.classList.add("flash");
+}
+function showEmptyState() {
+  $("results").style.display = "block";
+  const b = $("verdict");
+  b.className = "verdict empty";
+  b.textContent = "\u2191 Click an example, or hit \u201CInspect\u201D to verify the response above";
+  b.classList.remove("flash");
+  $("steps").innerHTML = "";
+  $("steps").style.opacity = "1";
+  $("canonical-wrap").style.display = "none";
+  $("session-wrap").style.display = "none";
+}
+function showError(msg) {
+  $("results").style.display = "block";
+  setBanner("reject", `\u2717 ${msg}`);
+  $("steps").innerHTML = "";
+  $("steps").style.opacity = "1";
+  $("canonical-wrap").style.display = "none";
+  $("session-wrap").style.display = "none";
+}
 function render(report) {
-  const banner = $("verdict");
+  $("steps").style.opacity = "1";
   if (report.verdict === "accept") {
-    banner.className = "verdict accept";
-    banner.textContent = "\u2713 ACCEPT \u2014 a conforming dApp seats this session";
+    setBanner("accept", "\u2713 ACCEPT \u2014 a conforming dApp seats this session");
   } else if (report.verdict === "wallet-rejected") {
-    banner.className = "verdict warn";
-    banner.textContent = `\u26A0 WALLET REJECTED \u2014 errorCode ${report.errorCode ?? "?"}`;
+    setBanner("warn", `\u26A0 WALLET REJECTED \u2014 errorCode ${report.errorCode ?? "?"}`);
   } else {
-    banner.className = "verdict reject";
-    banner.textContent = `\u2717 REJECT \u2014 a conforming dApp throws${report.errorCode != null ? ` (errorCode ${report.errorCode})` : ""}`;
+    setBanner("reject", `\u2717 REJECT \u2014 a conforming dApp throws${report.errorCode != null ? ` (errorCode ${report.errorCode})` : ""}`);
   }
   const steps = $("steps");
   steps.innerHTML = "";
-  for (const s of report.steps) {
+  report.steps.forEach((s, i) => {
     const row = document.createElement("div");
-    row.className = `step ${s.status}`;
+    row.className = `step ${s.status} reveal`;
+    row.style.animationDelay = `${i * 55}ms`;
     const code = s.code != null ? ` <span class="code">[${s.code}]</span>` : "";
     row.innerHTML = `<span class="glyph">${statusGlyph(s.status)}</span><span class="label">${s.label}${code}</span><span class="detail">${escapeHtml(s.detail)}</span>`;
     steps.appendChild(row);
-  }
+  });
   const canon = $("canonical");
   if (report.canonicalSubject) {
     canon.textContent = report.canonicalSubject;
@@ -2740,54 +2766,76 @@ function render(report) {
   } else {
     $("session-wrap").style.display = "none";
   }
-  $("results").style.display = "block";
 }
-function escapeHtml(s) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function scrollVerdictIntoView() {
+  const r = $("verdict").getBoundingClientRect();
+  if (r.top < 0 || r.bottom > window.innerHeight) {
+    $("verdict").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
-function runInspect() {
+function runInspect(opts = {}) {
   const responseUrl = val("response-url");
-  if (!responseUrl)
+  if (!responseUrl) {
+    showError("Paste a connect response URL above (or click an example).");
     return;
+  }
   let dappSecretKey;
   let expectedNonce;
   try {
     dappSecretKey = parseBytes(val("dapp-secret")) ?? void 0;
     expectedNonce = parseBytes(val("req-nonce")) ?? void 0;
   } catch (e) {
-    alert(`Could not parse the dApp secret / nonce: ${e.message}`);
+    showError(`Couldn\u2019t parse the dApp secret / nonce: ${e.message}`);
     return;
   }
-  render(inspectConnectResponse({ responseUrl, dappSecretKey, expectedNonce }));
+  $("results").style.display = "block";
+  setBanner("verifying", "\u23F3 Verifying\u2026");
+  $("steps").style.opacity = "0.3";
+  $("canonical-wrap").style.display = "none";
+  $("session-wrap").style.display = "none";
+  window.setTimeout(() => {
+    render(inspectConnectResponse({ responseUrl, dappSecretKey, expectedNonce }));
+    if (opts.scroll)
+      scrollVerdictIntoView();
+  }, 320);
 }
 function loadPreset(flaw) {
   const req = buildConnectRequest({ dappSecretKey: DEMO_DAPP_SECRET, nonce: DEMO_NONCE, redirectUrl: DEMO_REDIRECT });
-  const responseUrl = simulateConnectResponse(req.url, DEMO_REF, flaw);
-  currentDappSecret = DEMO_DAPP_SECRET;
-  currentNonce = DEMO_NONCE;
-  setVal("response-url", responseUrl);
+  setVal("response-url", simulateConnectResponse(req.url, DEMO_REF, flaw));
   setVal("dapp-secret", bytesToHex(DEMO_DAPP_SECRET));
   setVal("req-nonce", b64uEncode(DEMO_NONCE));
-  runInspect();
+  document.querySelectorAll("[data-preset]").forEach(
+    (b) => b.classList.toggle("active", b.dataset.preset === flaw)
+  );
+  runInspect({ scroll: true });
 }
 function buildFreshRequest() {
   const kp = newBoxKeyPair();
   const nonce = randomNonce();
-  currentDappSecret = kp.secretKey;
-  currentNonce = nonce;
   const req = buildConnectRequest({ dappSecretKey: kp.secretKey, nonce, redirectUrl: val("fresh-redirect") || DEMO_REDIRECT });
   $("request-url").textContent = req.url;
   setVal("dapp-secret", bytesToHex(kp.secretKey));
   setVal("req-nonce", b64uEncode(nonce));
   $("request-wrap").style.display = "block";
+  $("request-hint").style.display = "block";
 }
 function bootstrap() {
-  $("btn-inspect").addEventListener("click", runInspect);
+  $("btn-inspect").addEventListener("click", () => runInspect({ scroll: true }));
   $("btn-build").addEventListener("click", buildFreshRequest);
   document.querySelectorAll("[data-preset]").forEach(
     (b) => b.addEventListener("click", () => loadPreset(b.dataset.preset))
   );
-  loadPreset("none");
+  ["dapp-secret", "req-nonce"].forEach(
+    (id) => $(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter")
+        runInspect({ scroll: true });
+    })
+  );
+  const req = buildConnectRequest({ dappSecretKey: DEMO_DAPP_SECRET, nonce: DEMO_NONCE, redirectUrl: DEMO_REDIRECT });
+  setVal("response-url", simulateConnectResponse(req.url, DEMO_REF, "none"));
+  setVal("dapp-secret", bytesToHex(DEMO_DAPP_SECRET));
+  setVal("req-nonce", b64uEncode(DEMO_NONCE));
+  showEmptyState();
 }
 if (typeof document !== "undefined")
   bootstrap();
