@@ -3,10 +3,6 @@ name: Deploy inspector to Pages
 on:
   push:
     branches: [release/v0.1.0-public]
-    paths:
-      - playground/index.html
-      - playground/inspector.js
-      - .github/workflows/deploy-pages.yml
   workflow_dispatch:
 
 permissions:
