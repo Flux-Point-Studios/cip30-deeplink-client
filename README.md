@@ -11,6 +11,7 @@ Pre-release (`0.1.x`). The CIP is open for community review at:
 - **CIP PR**: <https://github.com/cardano-foundation/CIPs/pull/1189>
 - **Forum thread**: <https://forum.cardano.org/t/cip-proposal-mobile-deep-link-signing-for-native-dapps-cip-30-extension/154561>
 - **Live inspector** (debug your integration, no install): <https://cip30-inspector.vercel.app>
+- **AI agents / LLMs**: machine-readable integration docs at <https://cip30-inspector.vercel.app/llms.txt> (`/llms-full.txt` for everything in one fetch)
 
 **Wallet support.** Works with any wallet that implements the CIP-186 signed `connect`. Gero is verified end-to-end against this SDK; [Yuti](https://github.com/Flux-Point-Studios/yuti) is the wallet-side reference. The SDK is **fail-closed** — it will not seat a session from a wallet that has not shipped the signed handshake, so end-user signing requires one of those wallets. You can build and test your entire integration today without either (see below).
 

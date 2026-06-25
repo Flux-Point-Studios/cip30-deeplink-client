@@ -1,0 +1,42 @@
+# CIP-30-DeepLink — @fluxpointstudios/cip30-deeplink-client
+
+> Reference TypeScript SDK for CIP-30-DeepLink (CIP-186): a deep-link wire protocol that lets a mobile dApp ask an installed Cardano wallet to run CIP-30 operations (connect, signTx, signData) over the OS URL handler — no relay, no WebView, no QR. The connect handshake is fail-closed: the wallet's response is Ed25519-signed and replay-bound, and the SDK refuses to seat a session unless it verifies.
+
+## Install
+
+`npm install @fluxpointstudios/cip30-deeplink-client` — one runtime dependency (tweetnacl); runs in the browser and Node.
+
+## Core usage
+
+A deep-link round-trip spans a page navigation, so call `resume()` first on every page load; `connect()` / `signTx()` navigate to the wallet and return via the redirect (never as a return value).
+
+```ts
+import { DeepLinkClient } from "@fluxpointstudios/cip30-deeplink-client";
+
+const client = new DeepLinkClient({ wallet: "yuti", chain: "cardano:preprod", resolveTxHash });
+
+const resumed = await client.resume();        // recover any pending response (run FIRST, every load)
+if (resumed?.kind === "connect") { /* resumed.session: addresses, signingPublicKey, ... */ }
+if (resumed?.kind === "signTx")  { /* resumed.result.witnessSet */ }
+
+await client.connect({ name: "MyDapp", url: "https://mydapp.example" });  // navigates to the wallet
+await client.signTx({ tx: cborHex });          // once connected
+```
+
+- `signTx` returns a witness set, not a signed tx — splice it into the body or assemble server-side.
+- `commit = BLAKE2b-256(tx_body)`; wire `resolveTxHash` (MeshJS/Lucid/CSL) or pass `commit` per call.
+- `wallet` sets the deep-link scheme `cip30dl-<wallet>`; pass `httpsPrefix` for universal-link wallets.
+
+## Wallet support
+
+Fail-closed — end-user signing needs a wallet that emits the signed connect: Gero (verified end-to-end), Yuti (wallet-side reference). You can build and test your whole integration without a wallet via the inspector + the bundled fake wallet.
+
+## Links
+
+- npm package + full README: https://www.npmjs.com/package/@fluxpointstudios/cip30-deeplink-client
+- Source on GitHub: https://github.com/Flux-Point-Studios/cip30-deeplink-client
+- Full machine-readable docs (one fetch): https://cip30-inspector.vercel.app/llms-full.txt
+- CIP-186 specification (PR #1189): https://github.com/cardano-foundation/CIPs/pull/1189
+- Interactive inspector: https://cip30-inspector.vercel.app
+- Conformance kit + known-answer vectors: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/release/v0.1.0-public/conformance
+- Yuti — wallet-side reference wallet: https://github.com/Flux-Point-Studios/yuti

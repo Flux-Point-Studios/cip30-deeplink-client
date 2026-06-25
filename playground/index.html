@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CIP-30-DeepLink Inspector</title>
+    <!-- AI agents / LLMs: machine-readable integration docs at /llms.txt and /llms-full.txt -->
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="llms.txt — AI-readable docs" />
+    <meta name="ai-docs" content="/llms.txt" />
     <style>
       :root {
         --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
@@ -79,6 +82,8 @@
       .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
       #request-wrap, #request-hint, #canonical-wrap, #session-wrap { display: none; }
       @media (max-width: 620px) { .step { grid-template-columns: 20px 1fr; } .step .detail { grid-column: 2; } }
+      .agent-note { margin: 30px 0 0; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 12.5px; }
+      .agent-note a { color: var(--blue); }
     </style>
   </head>
   <body>
@@ -157,6 +162,11 @@
           <pre id="request-url"></pre>
         </div>
       </div>
+
+      <footer class="agent-note">
+        🤖 Building on this with an AI agent (Claude Code, Cursor, etc.)? Machine-readable integration docs:
+        <a href="/llms.txt">/llms.txt</a> · <a href="/llms-full.txt">/llms-full.txt</a>
+      </footer>
     </div>
     <script type="module" src="./inspector.js"></script>
   </body>
