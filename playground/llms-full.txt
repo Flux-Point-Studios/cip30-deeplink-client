@@ -159,5 +159,5 @@ integration without a wallet via the inspector + the bundled fake wallet (test/f
 - Source: https://github.com/Flux-Point-Studios/cip30-deeplink-client
 - CIP-186 spec (PR #1189): https://github.com/cardano-foundation/CIPs/pull/1189
 - Inspector: https://cip30-inspector.vercel.app
-- Conformance kit: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/release/v0.1.0-public/conformance
+- Conformance kit: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/main/conformance
 - Yuti wallet (reference): https://github.com/Flux-Point-Studios/yuti

@@ -38,5 +38,5 @@ Fail-closed — end-user signing needs a wallet that emits the signed connect: G
 - Full machine-readable docs (one fetch): https://cip30-inspector.vercel.app/llms-full.txt
 - CIP-186 specification (PR #1189): https://github.com/cardano-foundation/CIPs/pull/1189
 - Interactive inspector: https://cip30-inspector.vercel.app
-- Conformance kit + known-answer vectors: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/release/v0.1.0-public/conformance
+- Conformance kit + known-answer vectors: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/main/conformance
 - Yuti — wallet-side reference wallet: https://github.com/Flux-Point-Studios/yuti
