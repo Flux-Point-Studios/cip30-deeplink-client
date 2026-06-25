@@ -56,3 +56,15 @@ export function verifyEd25519(
 ): boolean {
   return nacl.sign.detached.verify(message, signature, publicKey);
 }
+
+/**
+ * Byte-equality for the connect nonce echo. The echoed nonce is a PUBLIC value
+ * (it travels in cleartext on the wire), so a constant-time compare protects
+ * nothing here — a length check + per-byte XOR is sufficient and honest.
+ */
+export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
+}

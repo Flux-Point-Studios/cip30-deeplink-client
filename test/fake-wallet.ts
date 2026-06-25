@@ -71,12 +71,18 @@ export class FakeYutiWallet {
     });
     const wnonce = nacl.randomBytes(24);
     const cipher = nacl.box(utf8Encode(sessionJson), wnonce, dappPub, this.box.secretKey);
-    return (
+    // Authenticate the pairing: tag the method, echo the request nonce verbatim,
+    // and sign the canonical subject (which covers method, walletKey, echo, and
+    // the payload ciphertext) with the session Ed25519 key.
+    const base =
       `${this.redirect}?response=approved` +
+      `&method=connect` +
       `&walletKey=${b64uEncode(this.box.publicKey)}` +
       `&nonce=${b64uEncode(wnonce)}` +
-      `&payload=${b64uEncode(cipher)}`
-    );
+      `&echo=${p.nonce}` +
+      `&payload=${b64uEncode(cipher)}`;
+    const sig = nacl.sign.detached(utf8Encode(walletCanonicalSubject(base)), this.sign.secretKey);
+    return `${base}&signature=${b64uEncode(sig)}`;
   }
 
   handleSignTx(url: string): { responseUrl: string; requestTx: string } {

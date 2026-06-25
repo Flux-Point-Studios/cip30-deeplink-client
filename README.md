@@ -10,11 +10,15 @@ Pre-release (`0.1.x`). The CIP is open for community review at:
 
 - **CIP PR**: <https://github.com/cardano-foundation/CIPs/pull/1189>
 - **Forum thread**: <https://forum.cardano.org/t/cip-proposal-mobile-deep-link-signing-for-native-dapps-cip-30-extension/154561>
+- **Live inspector** (debug your integration, no install): <https://cip30-inspector.vercel.app>
+- **AI agents / LLMs**: machine-readable integration docs at <https://cip30-inspector.vercel.app/llms.txt> (`/llms-full.txt` for everything in one fetch)
+
+**Wallet support.** Works with any wallet that implements the CIP-186 signed `connect`. Gero is verified end-to-end against this SDK; [Yuti](https://github.com/Flux-Point-Studios/yuti) is the wallet-side reference. The SDK is **fail-closed** — it will not seat a session from a wallet that has not shipped the signed handshake, so end-user signing requires one of those wallets. You can build and test your entire integration today without either (see below).
 
 ## Install
 
 ```bash
-npm install @fluxpoint/cip30-deeplink-client
+npm install @fluxpointstudios/cip30-deeplink-client
 ```
 
 Runtime dependency: `tweetnacl` (NaCl-box + Ed25519). Runs in the browser and Node.
@@ -24,7 +28,7 @@ Runtime dependency: `tweetnacl` (NaCl-box + Ed25519). Runs in the browser and No
 A deep-link round-trip is **not** a single call: the dApp navigates to the wallet, the wallet processes the request and redirects back to the dApp's `redirect` URL with the response in the query string. In a browser that is a full page navigation, so the SDK persists the in-flight request and you recover the result on the **next page load** with `resume()`.
 
 ```typescript
-import { DeepLinkClient } from "@fluxpoint/cip30-deeplink-client";
+import { DeepLinkClient } from "@fluxpointstudios/cip30-deeplink-client";
 
 const client = new DeepLinkClient({
   wallet: "yuti",                 // deep-link scheme: cip30dl-yuti
@@ -48,6 +52,18 @@ await client.connect({ name: "Aegis", url: "https://aegis.fluxpointstudios.com" 
 await client.signTx({ tx: cborHex });        // needs resolveTxHash, or pass commit
 ```
 
+That is the whole integration: **`resume()` first on every load**, then `connect()` / `signTx()`
+to start a flow. Both navigate to the wallet and return via the redirect, so the result always
+arrives through `resume()` on the next load — never as the return value of `connect`/`signTx`.
+
+> **Build and test with no wallet and no phone.** The
+> [live inspector](https://cip30-inspector.vercel.app) reproduces exactly
+> what `resume()` does — paste a `connect` response and every verification step (method tag, decrypt,
+> Ed25519 signature, nonce echo) lights up green/red, with the canonical subject and decrypted
+> session laid out. To round-trip `connect → signTx` offline, drive the bundled fake wallet
+> (`test/fake-wallet.ts`). `wallet` sets the deep-link scheme (`cip30dl-<wallet>`); for wallets that
+> advertise an https universal link, also pass `httpsPrefix`.
+
 ### Computing the commit (tx hash)
 
 `signTx` binds the request to `commit = BLAKE2b-256(tx_body)` — the Cardano transaction hash. The SDK stays dependency-light and does **not** bundle a serialization library, so either:
@@ -61,7 +77,12 @@ The wallet returns a **witness set**, not a signed tx. Splice it into the body w
 
 ### Verification
 
-Every `signTx` response carries the wallet's Ed25519 signature over the canonical subject, keyed by the `signingPublicKey` advertised at `connect`. `resume()` verifies it and **rejects** the result if it does not check out — a returned witness is always signature-verified.
+Both legs of the handshake are authenticated, and `resume()` **rejects** anything that doesn't check out:
+
+- **connect** — the response must carry the wallet's Ed25519 signature over the canonical subject (which covers `walletKey`, `method`, the encrypted payload, and an `echo` of the request nonce), a `method=connect` domain tag, and that nonce echo. The SDK decrypts the session, verifies the signature against the `signingPublicKey` it advertises, and confirms the echo — so an unsigned, tampered, or replayed connect can never seat a session, and the verified key is pinned for the rest of the session.
+- **signTx** — every response is Ed25519-signed over the canonical subject, keyed by the `signingPublicKey` pinned at connect. A returned witness is always signature-verified.
+
+Connect is first contact, so the signature proves the response is consistent, untampered, and bound to this request — not, on its own, that the responder is the user's genuine wallet (that rests on the OS routing the scheme plus the in-wallet consent screen). What the pin buys is that every later `signTx` reply is provably from the same key-holder this connect established.
 
 ## API surface
 

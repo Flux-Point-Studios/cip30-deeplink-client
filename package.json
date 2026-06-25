@@ -1,5 +1,5 @@
 {
-  "name": "@fluxpoint/cip30-deeplink-client",
+  "name": "@fluxpointstudios/cip30-deeplink-client",
   "version": "0.1.0",
   "description": "Reference TypeScript SDK for CIP-30-DeepLink — mobile deep-link signing for Cardano dApps. Companion to cardano-foundation/CIPs#1189.",
   "type": "module",
@@ -16,9 +16,14 @@
   "files": ["dist", "src", "LICENSE", "README.md"],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build:playground": "esbuild playground/inspector.ts --bundle --format=esm --target=es2020 --outfile=playground/inspector.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": ["cardano", "cip-30", "cip-186", "deep-link", "wallet", "mobile", "dapp"],
   "license": "Apache-2.0",
@@ -32,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"

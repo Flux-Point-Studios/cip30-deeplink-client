@@ -15,6 +15,7 @@ import type {
   DeepLinkClientOptions,
   KeyValueStore,
   Session,
+  SignFormat,
   SignTxOptions,
   SignTxResult,
 } from './types.js';
@@ -25,7 +26,9 @@ export type ResumeResult =
   | { kind: 'signTx'; result: SignTxResult }
   | null;
 
-type Pending = { kind: 'connect' } | { kind: 'signTx'; commitHex: string };
+type Pending =
+  | { kind: 'connect'; nonceB64: string }
+  | { kind: 'signTx'; commitHex: string };
 
 function defaultStorage(): KeyValueStore {
   const ls = (globalThis as { localStorage?: KeyValueStore }).localStorage;
@@ -61,6 +64,8 @@ export class DeepLinkClient {
   private readonly resolveTxHash?: (txCbor: string) => string;
   private readonly navigate: (url: string) => void;
   private readonly nowSeconds: () => number;
+  private readonly signFormat: SignFormat;
+  private readonly httpsPrefix?: string;
 
   private readonly kDappKey: string;
   private readonly kSession: string;
@@ -85,16 +90,30 @@ export class DeepLinkClient {
         loc.href = url;
       });
     this.nowSeconds = options.now ?? (() => Math.floor(Date.now() / 1000));
+    this.signFormat = options.signFormat ?? 'sdk-legacy';
+    this.httpsPrefix = options.httpsPrefix;
 
     this.kDappKey = `cip30dl:dappkey:${options.wallet}`;
     this.kSession = `cip30dl:session:${options.wallet}`;
     this.kPending = `cip30dl:pending:${options.wallet}`;
   }
 
-  /** The active session, if a prior connect was resumed. */
+  /** The active session, if a prior connect was resumed AND it has not expired.
+   *  An expired session is cleared and treated as no session, so callers fall
+   *  back to a reconnect instead of round-tripping a doomed signTx. */
   getSession(): Session | null {
     const raw = this.storage.getItem(this.kSession);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    if (!raw) return null;
+    const session = JSON.parse(raw) as Session;
+    if (
+      typeof session.expiresAt === 'number' &&
+      session.expiresAt > 0 &&
+      this.nowSeconds() >= session.expiresAt
+    ) {
+      this.storage.removeItem(this.kSession);
+      return null;
+    }
+    return session;
   }
 
   /** Forget the session and dApp keypair (full disconnect). */
@@ -110,16 +129,40 @@ export class DeepLinkClient {
    */
   async connect(dappInfo: DappInfo): Promise<void> {
     const dapp = this.ensureDappKeyPair();
+    // Persist the request nonce: the wallet must echo it in the (signed) connect
+    // response, and resume() compares the echo against this to bind the pairing
+    // to this attempt and reject replays.
+    const nonce = randomNonce();
     const url = buildConnectUrl({
       scheme: this.scheme,
+      httpsPrefix: this.httpsPrefix,
+      chain: this.chain,
+      redirectUrl: this.redirectUrl,
+      dappInfo,
+      dappPublicKey: dapp.publicKey,
+      nonce,
+    });
+    this.setPending({ kind: 'connect', nonceB64: b64uEncode(nonce) });
+    this.navigate(url);
+  }
+
+  /**
+   * Build the `connect` deep-link URL WITHOUT navigating or persisting pending
+   * state — diagnostics/preview only (the real flow is {@link connect}). Uses
+   * the persisted dApp keypair so `dappKey` matches a real connect; the nonce is
+   * fresh each call. Lets a debug overlay show + test the exact URL on a phone.
+   */
+  previewConnectUrl(dappInfo: DappInfo): string {
+    const dapp = this.ensureDappKeyPair();
+    return buildConnectUrl({
+      scheme: this.scheme,
+      httpsPrefix: this.httpsPrefix,
       chain: this.chain,
       redirectUrl: this.redirectUrl,
       dappInfo,
       dappPublicKey: dapp.publicKey,
       nonce: randomNonce(),
     });
-    this.setPending({ kind: 'connect' });
-    this.navigate(url);
   }
 
   /**
@@ -141,6 +184,7 @@ export class DeepLinkClient {
 
     const url = buildSignTxUrl({
       scheme: this.scheme,
+      httpsPrefix: this.httpsPrefix,
       redirectUrl: this.redirectUrl,
       dappPublicKey: dapp.publicKey,
       dappSecretKey: dapp.secretKey,
@@ -148,7 +192,8 @@ export class DeepLinkClient {
       commit,
       payload: {
         session: session.session,
-        tx: opts.tx,
+        // sdk-legacy: hex CBOR. spec (CIP-0186): base64url(CBOR).
+        tx: this.signFormat === 'spec' ? b64uEncode(hexToBytes(opts.tx)) : opts.tx,
         partialSign: opts.partialSign ?? true,
         vkeyHints: opts.vkeyHints ?? [],
       },
@@ -177,23 +222,28 @@ export class DeepLinkClient {
         const session = decodeConnectResponse({
           responseUrl: url,
           dappSecretKey: dapp.secretKey,
+          expectedNonce: b64uDecode(pending.nonceB64),
         });
         this.storage.setItem(this.kSession, JSON.stringify(session));
         return { kind: 'connect', session };
       }
       const session = this.getSession();
       if (!session) throw new Error('signTx response with no stored session');
-      const { witnessSet, signatureValid } = decodeSignTxResponse({
+      const { witnessSet, signatureValid, txHash } = decodeSignTxResponse({
         responseUrl: url,
         dappSecretKey: dapp.secretKey,
         session,
+        format: this.signFormat,
+        expectedCommit: hexToBytes(pending.commitHex),
       });
       if (!signatureValid) {
         throw new Error('wallet response signature did not verify');
       }
       return {
         kind: 'signTx',
-        result: { witnessSet, txHash: pending.commitHex, signatureValid },
+        // Prefer the spec envelope's txHash; for sdk-legacy it's the request
+        // commit (= the tx hash the wallet bound to).
+        result: { witnessSet, txHash: txHash ?? pending.commitHex, signatureValid },
       };
     } finally {
       this.storage.removeItem(this.kPending);
@@ -253,10 +303,4 @@ export class DeepLinkClient {
       g.history.replaceState(null, '', g.location.pathname);
     }
   }
-}
-
-function bytesToHexSafe(bytes: Uint8Array): string {
-  let s = '';
-  for (const b of bytes) s += b.toString(16).padStart(2, '0');
-  return s;
 }

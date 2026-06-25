@@ -1,0 +1,163 @@
+# CIP-30-DeepLink — full integration reference
+
+> @fluxpointstudios/cip30-deeplink-client — the dApp-side reference SDK for CIP-30-DeepLink (CIP-186).
+> Everything-in-one-fetch doc for AI agents and developers. Concise index: https://cip30-inspector.vercel.app/llms.txt
+
+## What it is
+
+CIP-30-DeepLink is a deep-link wire protocol that lets a native mobile dApp ask an installed Cardano
+wallet to perform CIP-30 operations (connect, signTx, signData, address/network reads) over the OS's
+URL-handling mechanism. No relay server, no embedded WebView, no QR, no WebSocket. The dApp navigates
+to the wallet via a deep link; the wallet processes the request and redirects back to the dApp with an
+encrypted, signed response in the query string.
+
+Transport security: each payload is NaCl-box encrypted (X25519 + XSalsa20-Poly1305) and the wallet
+signs every response with a session-binding Ed25519 key. The connect handshake is FAIL-CLOSED — the
+SDK refuses to seat a session unless the response is signed, method-tagged, nonce-echoed, and verifies.
+
+## Install
+
+    npm install @fluxpointstudios/cip30-deeplink-client
+
+One runtime dependency: tweetnacl. Runs in the browser and Node. Ships ESM + CJS + TypeScript types.
+
+## The round-trip model (read this first)
+
+A deep-link operation is NOT a single async call. `connect()` and `signTx()` navigate the page to the
+wallet; the wallet redirects back to your `redirect` URL on the next page load. So:
+
+1. On EVERY page load, call `await client.resume()` FIRST to recover any pending response.
+2. Then call `connect()` / `signTx()` to start a flow (these navigate away).
+
+The result of a flow always arrives via `resume()` on the return load — never as the return value of
+`connect`/`signTx`. The SDK persists in-flight state (the dApp keypair, the request nonce, the pending
+op) in `storage` (localStorage by default) across the navigation.
+
+## Quickstart
+
+```ts
+import { DeepLinkClient } from "@fluxpointstudios/cip30-deeplink-client";
+
+const client = new DeepLinkClient({
+  wallet: "yuti",                 // deep-link scheme cip30dl-yuti
+  chain: "cardano:preprod",       // or cardano:mainnet / cardano:preview
+  resolveTxHash,                  // your tx builder's BLAKE2b-256 hasher (MeshJS/Lucid/CSL)
+});
+
+// 1. Recover any pending wallet response (run first, every load).
+const resumed = await client.resume();
+if (resumed?.kind === "connect") {
+  const session = resumed.session;   // { addresses, signingPublicKey, chain, network, expiresAt, ... }
+}
+if (resumed?.kind === "signTx") {
+  const { witnessSet, txHash, signatureValid } = resumed.result;
+}
+
+// 2. Start connect (navigates to the wallet; result returns via resume()).
+await client.connect({ name: "MyDapp", url: "https://mydapp.example", iconUrl: "..." });
+
+// 3. Once connected, request a signature.
+await client.signTx({ tx: cborHex });
+```
+
+## API
+
+### new DeepLinkClient(options)
+- wallet: string — wallet id; sets the deep-link scheme `cip30dl-<wallet>`.
+- chain: "cardano:mainnet" | "cardano:preprod" | "cardano:preview".
+- redirectUrl?: string — where the wallet returns; defaults to the current page URL in a browser,
+  required outside one. Must be an https universal link the wallet can bind to your host, or a custom
+  scheme you registered.
+- storage?: KeyValueStore — persists in-flight state across the redirect; defaults to localStorage,
+  required outside a browser.
+- resolveTxHash?: (txCbor: string) => string — your tx builder's BLAKE2b-256(tx_body) hasher, for
+  signTx. Optional if you always pass `commit`.
+- signFormat?: "sdk-legacy" | "spec" — response wire format. sdk-legacy (default): the response
+  decrypts to raw transaction_witness_set CBOR (Yuti). spec: the CIP-0186 { commit, witnessSet, txHash }
+  envelope; the dApp verifies the commit echo (mismatch => -2) (Gero). connect is byte-identical across both.
+- httpsPrefix?: string — an https universal-link prefix the wallet advertises (e.g.
+  https://cip30dl.wallet.io/cip30dl/v1/). When set, requests use the https form instead of the custom
+  scheme. iOS Safari opens universal links reliably but drops custom-scheme navigations.
+
+### connect(dappInfo): Promise<void>
+dappInfo = { name, url, iconUrl? }. Navigates to the wallet. Session delivered by resume().
+
+### signTx(opts): Promise<void>
+opts = { tx, partialSign?, vkeyHints?, commit?, ttlSeconds? }. tx is unsigned CBOR (hex). Navigates to
+the wallet. Witness delivered by resume(). Requires a prior connected session.
+
+### resume(url?): Promise<ResumeResult>
+Recover a pending response (defaults to location.href). Returns { kind: "connect", session },
+{ kind: "signTx", result }, or null. THROWS DeepLinkRejection on a wallet rejection, or an Error on a
+decryption/verification failure. A returned signTx witness is always signature-verified.
+
+### getSession(): Session | null
+The active session, or null if none / expired (an expired session is cleared automatically).
+
+### disconnect(): void
+Forget the session and dApp keypair.
+
+### Low-level pure helpers (custom transports / server-side / testing)
+buildConnectUrl, buildSignTxUrl, decodeConnectResponse, decodeSignTxResponse, canonicalSubject,
+canonicalSubjectCandidates, b64uEncode, b64uDecode.
+
+### Types
+- Session = { session, network, addresses, chain, walletId, expiresAt, signingPublicKey, walletKey }.
+- SignTxResult = { witnessSet, txHash, signatureValid }.
+- DeepLinkRejection extends Error = { errorCode: number, walletMessage: string }.
+
+## signTx specifics
+- The wallet returns a WITNESS SET, not a signed tx. Splice it into the body with your serialization
+  library, or POST { txCbor, witnessSet } to your backend to assemble + submit (keeps CSL/Mesh off the client).
+- commit = BLAKE2b-256(tx_body) (the Cardano tx hash) binds the request to a specific tx. Wire
+  resolveTxHash once, or pass commit (base64url of the 32-byte hash) per call.
+
+## Verification semantics (what resume() enforces)
+
+connect (first contact, fail-closed): the response MUST carry method=connect (domain separation), an
+echo of the request nonce, and the wallet's Ed25519 signature over the canonical subject. The SDK
+box-decrypts the session, verifies the signature against the signingPublicKey inside that payload, then
+checks echo == the nonce it sent. Rejections: missing method/signature/echo or bad signature =>
+errorCode -10 (ResponseSignatureInvalid); echo mismatch => -5 (NonceReplay).
+
+signTx: every response is Ed25519-signed over the canonical subject, keyed by the signingPublicKey
+pinned at connect. A returned witness is always signature-verified; a bad signature rejects.
+
+Trust boundary (honest): connect is first contact, so the signature proves the response is consistent,
+untampered, replay-bound, and pins the session key — it does NOT by itself prove WHICH wallet replied.
+That rests on the OS routing the scheme to the paired wallet plus the in-wallet consent screen.
+
+## Canonical subject (the one interop-critical algorithm)
+
+The signed message is: "cip30dl-v1\n" + <scheme>://<host-lowercased>[:port]<path> + "?" + the query
+params (excluding signature) sorted by key in lexicographic byte order, each key and value
+strict-unreserved percent-encoded ([A-Za-z0-9._~-] literal, else %XX uppercase), joined by &. Default
+ports (443/80) omitted; path byte-preserved.
+
+Empty-path caveat: an authority-only redirect (https://host, no /) is '' under RFC-3986/Dart but '/'
+under WHATWG URL.pathname — verifiers SHOULD accept both (the SDK's canonicalSubjectCandidates does).
+
+Deterministic vs randomized Ed25519: a conforming verifier VERIFIES the signature; it does not
+byte-compare it. Randomized/hedged signers (Apple CryptoKit) produce different-but-valid signature bytes
+than deterministic ones (tweetnacl/libsodium). The known-answer vector's signature is a deterministic
+reference; verify, don't byte-match.
+
+## Conformance
+
+A byte-exact known-answer vector (fixed keys => reproducible signature + response URL, plus the -5/-10
+reject cases) and a cross-language conformance kit live in the repo under conformance/. There's a live
+inspector to paste a response and watch every check go green/red.
+
+## Wallet support
+
+Fail-closed, so end-user signing needs a wallet that emits the signed connect: Gero (implemented +
+verified end-to-end against this SDK), Yuti (wallet-side reference). Build and test your whole
+integration without a wallet via the inspector + the bundled fake wallet (test/fake-wallet.ts).
+
+## Links
+- npm: https://www.npmjs.com/package/@fluxpointstudios/cip30-deeplink-client
+- Source: https://github.com/Flux-Point-Studios/cip30-deeplink-client
+- CIP-186 spec (PR #1189): https://github.com/cardano-foundation/CIPs/pull/1189
+- Inspector: https://cip30-inspector.vercel.app
+- Conformance kit: https://github.com/Flux-Point-Studios/cip30-deeplink-client/tree/main/conformance
+- Yuti wallet (reference): https://github.com/Flux-Point-Studios/yuti

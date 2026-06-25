@@ -10,13 +10,30 @@ import {
   utf8Encode,
 } from './base64url.js';
 import { canonicalSubjectCandidates } from './canonical.js';
-import { boxOpen, boxSeal, verifyEd25519 } from './crypto.js';
-import { DeepLinkRejection, type DappInfo, type Session } from './types.js';
+import { boxOpen, boxSeal, bytesEqual, verifyEd25519 } from './crypto.js';
+import {
+  DeepLinkRejection,
+  type DappInfo,
+  type Session,
+  type SignFormat,
+} from './types.js';
 
 export const PROTOCOL_VERSION = '1';
 
 /** The deep-link scheme for a wallet id, e.g. `yuti` -> `cip30dl-yuti`. */
 export const walletScheme = (walletId: string): string => `cip30dl-${walletId}`;
+
+/**
+ * The request-URL base up to (but excluding) the method name (`connect` /
+ * `signTx`). Prefer the wallet's https universal-link prefix when it advertises
+ * one — iOS Safari opens universal links reliably but frequently drops
+ * custom-scheme (`cip30dl-<id>:`) navigations silently — else fall back to the
+ * custom scheme. Both forms carry identical query params (spec Appendix C.1).
+ *   - https:  `https://cip30dl.wallet.io/cip30dl/v1/` + `connect`
+ *   - scheme: `cip30dl-<id>:/v1/` + `connect`
+ */
+export const endpointBase = (scheme: string, httpsPrefix?: string): string =>
+  httpsPrefix && httpsPrefix.length > 0 ? httpsPrefix : `${scheme}:/v1/`;
 
 export function hexToBytes(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) throw new Error('odd-length hex string');
@@ -37,6 +54,9 @@ export function bytesToHex(bytes: Uint8Array): string {
 
 export interface ConnectUrlParams {
   scheme: string;
+  /** Optional https universal-link prefix (e.g. `https://cip30dl.wallet.io/cip30dl/v1/`).
+   *  When set, the request uses the https form instead of the custom scheme. */
+  httpsPrefix?: string;
   chain: string;
   redirectUrl: string;
   dappInfo: DappInfo;
@@ -54,7 +74,7 @@ export function buildConnectUrl(p: ConnectUrlParams): string {
     }),
   );
   return (
-    `${p.scheme}:/v1/connect?v=${PROTOCOL_VERSION}` +
+    `${endpointBase(p.scheme, p.httpsPrefix)}connect?v=${PROTOCOL_VERSION}` +
     `&dapp=${info}` +
     `&dappKey=${b64uEncode(p.dappPublicKey)}` +
     `&redirect=${encodeURIComponent(p.redirectUrl)}` +
@@ -65,6 +85,8 @@ export function buildConnectUrl(p: ConnectUrlParams): string {
 
 export interface SignTxUrlParams {
   scheme: string;
+  /** Optional https universal-link prefix — see {@link ConnectUrlParams.httpsPrefix}. */
+  httpsPrefix?: string;
   redirectUrl: string;
   dappPublicKey: Uint8Array;
   dappSecretKey: Uint8Array;
@@ -84,7 +106,7 @@ export function buildSignTxUrl(p: SignTxUrlParams): string {
   const plaintext = utf8Encode(JSON.stringify(p.payload));
   const cipher = boxSeal(plaintext, p.nonce, p.walletPublicKey, p.dappSecretKey);
   return (
-    `${p.scheme}:/v1/signTx?v=${PROTOCOL_VERSION}` +
+    `${endpointBase(p.scheme, p.httpsPrefix)}signTx?v=${PROTOCOL_VERSION}` +
     `&dappKey=${b64uEncode(p.dappPublicKey)}` +
     `&redirect=${encodeURIComponent(p.redirectUrl)}` +
     `&nonce=${b64uEncode(p.nonce)}` +
@@ -117,18 +139,60 @@ export function throwIfRejected(params: URLSearchParams): void {
   }
 }
 
-/** Decode + adopt a `connect` response into a Session (throws on rejection). */
+/**
+ * Decode + adopt a `connect` response into a Session (throws on rejection).
+ *
+ * Fail-closed authentication of the pairing handshake. The response MUST carry:
+ *   - `method=connect` — domain separation, so a signature lifted from a signTx
+ *     (or any other) reply can't be re-presented as a connect;
+ *   - `signature` — the wallet's Ed25519 signature over the canonical subject
+ *     (sig-stripped, key-sorted query). It covers `walletKey`, `method`, `echo`
+ *     and the `payload` ciphertext, so it is both proof-of-possession of the
+ *     session signing key advertised inside the payload AND whole-response
+ *     integrity;
+ *   - `echo` — the exact 24-byte nonce this client put in the matching request,
+ *     binding the response to this attempt so a captured one can't be replayed.
+ *
+ * We box-open the payload to recover `signingPublicKey`, verify the signature
+ * against it, then confirm the echo. Any missing or non-verifying element
+ * throws, so an unsigned, tampered, or replayed connect can never seat a
+ * session.
+ *
+ * Trust boundary (honest scope): connect is first contact, so there is no
+ * pre-shared wallet key — the signature is checked against the very
+ * `signingPublicKey` carried in the payload. That proves the response is
+ * internally consistent, untampered, and bound to THIS request (echo) and
+ * method, and it PINS that key for the session. It does not, on its own, prove
+ * the responder is the user's genuine wallet; that rests on the OS routing the
+ * scheme to it plus the in-wallet consent screen. What the pin buys is that
+ * every later signTx response — verified against this same key — is provably
+ * from the same key-holder this connect established.
+ */
 export function decodeConnectResponse(args: {
   responseUrl: string;
   dappSecretKey: Uint8Array;
+  /** The 24-byte nonce this client placed in the matching `connect` request. */
+  expectedNonce: Uint8Array;
 }): Session {
   const params = paramsOf(args.responseUrl);
   throwIfRejected(params);
   const walletKeyB64 = params.get('walletKey');
   const payloadB64 = params.get('payload');
   const nonceB64 = params.get('nonce');
+  const signatureB64 = params.get('signature');
+  const echoB64 = params.get('echo');
   if (!walletKeyB64 || !payloadB64 || !nonceB64) {
     throw new Error('connect response missing walletKey/payload/nonce');
+  }
+  // Domain separation: a connect response must declare itself one. `method` is
+  // inside the signed canonical subject, so a reply signed for another method
+  // would fail verification below regardless — this is the explicit, legible
+  // form of that check and also rejects a method-less reply outright.
+  if (params.get('method') !== 'connect') {
+    throw new DeepLinkRejection(-10, 'connect response missing method=connect');
+  }
+  if (!signatureB64 || !echoB64) {
+    throw new DeepLinkRejection(-10, 'connect response is unsigned');
   }
   const plaintext = boxOpen(
     b64uDecode(payloadB64),
@@ -138,6 +202,20 @@ export function decodeConnectResponse(args: {
   );
   if (!plaintext) throw new Error('connect response decryption failed');
   const json = JSON.parse(utf8Decode(plaintext)) as Omit<Session, 'walletKey'>;
+  // Proof-of-possession + integrity: the session signing key (advertised inside
+  // the just-decrypted payload) must have signed the canonical subject.
+  const signature = b64uDecode(signatureB64);
+  const signingPublicKey = b64uDecode(json.signingPublicKey);
+  const signatureValid = canonicalSubjectCandidates(args.responseUrl).some(
+    (subject) => verifyEd25519(utf8Encode(subject), signature, signingPublicKey),
+  );
+  if (!signatureValid) {
+    throw new DeepLinkRejection(-10, 'connect response signature invalid');
+  }
+  // Replay binding: the wallet must echo the exact nonce we just sent.
+  if (!bytesEqual(b64uDecode(echoB64), args.expectedNonce)) {
+    throw new DeepLinkRejection(-5, 'connect response nonce echo mismatch');
+  }
   return { ...json, walletKey: walletKeyB64 };
 }
 
@@ -150,26 +228,59 @@ export function decodeSignTxResponse(args: {
   responseUrl: string;
   dappSecretKey: Uint8Array;
   session: Session;
-}): { witnessSet: string; signatureValid: boolean } {
+  /** Wire format of the wallet's reply (default `sdk-legacy`). */
+  format?: SignFormat;
+  /** The 32-byte request commit — REQUIRED under `spec` to verify the echo. */
+  expectedCommit?: Uint8Array;
+}): { witnessSet: string; signatureValid: boolean; txHash?: string } {
   const params = paramsOf(args.responseUrl);
   throwIfRejected(params);
+  // Method confusion: a `connect` response seats a session and is authenticated
+  // differently; it must never be consumed by the signTx path.
+  if (params.get('method') === 'connect') {
+    throw new Error('signTx response carries method=connect');
+  }
   const payloadB64 = params.get('payload');
   const nonceB64 = params.get('nonce');
   const signatureB64 = params.get('signature');
   if (!payloadB64 || !nonceB64 || !signatureB64) {
     throw new Error('signTx response missing payload/nonce/signature');
   }
-  const witness = boxOpen(
+  const plain = boxOpen(
     b64uDecode(payloadB64),
     b64uDecode(nonceB64),
     b64uDecode(args.session.walletKey),
     args.dappSecretKey,
   );
-  if (!witness) throw new Error('signTx response decryption failed');
+  if (!plain) throw new Error('signTx response decryption failed');
   const signature = b64uDecode(signatureB64);
   const signingPublicKey = b64uDecode(args.session.signingPublicKey);
   const signatureValid = canonicalSubjectCandidates(args.responseUrl).some(
     (subject) => verifyEd25519(utf8Encode(subject), signature, signingPublicKey),
   );
-  return { witnessSet: bytesToHex(witness), signatureValid };
+
+  if (args.format === 'spec') {
+    // CIP-0186 envelope: { commit, witnessSet, txHash } (all base64url).
+    let env: { commit?: string; witnessSet?: string; txHash?: string };
+    try {
+      env = JSON.parse(utf8Decode(plain)) as typeof env;
+    } catch {
+      throw new Error('spec signTx response payload is not the JSON envelope');
+    }
+    if (!env.witnessSet || !env.commit) {
+      throw new Error('spec signTx response missing commit/witnessSet');
+    }
+    // MUST verify the commit echo (defeats tx-body substitution across the
+    // request/response loop): mismatch ⇒ errorCode -2 CommitMismatch.
+    if (args.expectedCommit && env.commit !== b64uEncode(args.expectedCommit)) {
+      throw new DeepLinkRejection(-2, 'commit mismatch');
+    }
+    return {
+      witnessSet: bytesToHex(b64uDecode(env.witnessSet)),
+      signatureValid,
+      txHash: env.txHash,
+    };
+  }
+  // sdk-legacy: the decrypted payload IS the raw transaction_witness_set CBOR.
+  return { witnessSet: bytesToHex(plain), signatureValid };
 }

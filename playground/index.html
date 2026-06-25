@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CIP-30-DeepLink Inspector</title>
+    <!-- AI agents / LLMs: machine-readable integration docs at /llms.txt and /llms-full.txt -->
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="llms.txt — AI-readable docs" />
+    <meta name="ai-docs" content="/llms.txt" />
+    <style>
+      :root {
+        --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+        --muted: #8b949e; --green: #3fb950; --red: #f85149; --amber: #d29922;
+        --blue: #58a6ff; --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 90px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      h1 .tag { font: 600 11px var(--mono); color: var(--blue); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; vertical-align: middle; margin-left: 8px; }
+      .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+      .sub a { color: var(--blue); }
+      .how { background: rgba(88,166,255,.07); border: 1px solid rgba(88,166,255,.25); border-radius: 10px; padding: 12px 16px; margin-bottom: 22px; font-size: 14px; }
+      .how b { color: var(--blue); }
+      .how .n { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%; background: var(--blue); color: #0d1117; font: 700 11px var(--mono); margin-right: 4px; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+      .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 4px; }
+      .panel h2 .step-no { color: var(--blue); margin-right: 4px; }
+      .panel .lead { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+      textarea, input {
+        width: 100%; background: #0d1117; color: var(--text); border: 1px solid var(--border);
+        border-radius: 7px; padding: 9px 11px; font: 12.5px/1.45 var(--mono); resize: vertical;
+      }
+      textarea { min-height: 88px; word-break: break-all; }
+      textarea:focus, input:focus { outline: none; border-color: var(--blue); }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      .row > div { flex: 1; min-width: 220px; }
+      button {
+        background: #21262d; color: var(--text); border: 1px solid var(--border); border-radius: 7px;
+        padding: 9px 14px; font-size: 13px; cursor: pointer; font-weight: 600; transition: border-color .12s, background .12s;
+      }
+      button:hover { border-color: #6e7681; }
+      button.primary { background: #238636; border-color: #2ea043; font-size: 14px; padding: 10px 20px; }
+      button.primary:hover { background: #2ea043; }
+      .presets { display: flex; gap: 8px; flex-wrap: wrap; }
+      .presets button { font-weight: 500; font-size: 12.5px; }
+      .presets button.active { border-color: var(--blue); background: rgba(88,166,255,.14); color: var(--blue); }
+      .actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+      .actions .tip { color: var(--muted); font-size: 12px; }
+
+      .verdict { font: 700 16px var(--mono); padding: 13px 16px; border-radius: 8px; margin-bottom: 16px; }
+      .verdict.accept { background: rgba(63,185,80,.12); color: var(--green); border: 1px solid rgba(63,185,80,.4); }
+      .verdict.reject { background: rgba(248,81,73,.12); color: var(--red); border: 1px solid rgba(248,81,73,.4); }
+      .verdict.warn { background: rgba(210,153,34,.12); color: var(--amber); border: 1px solid rgba(210,153,34,.4); }
+      .verdict.verifying { background: rgba(210,153,34,.10); color: var(--amber); border: 1px solid rgba(210,153,34,.35); }
+      .verdict.empty { background: #0d1117; color: var(--muted); border: 1px dashed var(--border); font: 500 14px var(--mono); text-align: center; }
+      .verdict.flash { animation: flashring .6s ease-out; }
+      @keyframes flashring {
+        0% { box-shadow: 0 0 0 0 rgba(88,166,255,0); }
+        25% { box-shadow: 0 0 0 4px rgba(88,166,255,.45); }
+        100% { box-shadow: 0 0 0 0 rgba(88,166,255,0); }
+      }
+
+      #steps { transition: opacity .15s; }
+      .step { display: grid; grid-template-columns: 22px 240px 1fr; gap: 8px; align-items: baseline; padding: 9px 4px; border-top: 1px solid var(--border); font-size: 13.5px; }
+      .step:first-child { border-top: none; }
+      .step.reveal { animation: reveal .3s ease-out both; }
+      @keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+      .step .glyph { font-weight: 700; text-align: center; }
+      .step.pass .glyph { color: var(--green); } .step.fail .glyph { color: var(--red); }
+      .step.skip .glyph { color: var(--muted); } .step.info .glyph { color: var(--blue); }
+      .step .label { font-weight: 600; }
+      .step.skip .label, .step.skip .detail { color: var(--muted); }
+      .step .detail { color: var(--muted); font: 12px var(--mono); word-break: break-word; }
+      .step .code { color: var(--red); font: 11px var(--mono); }
+
+      pre { background: #0d1117; border: 1px solid var(--border); border-radius: 7px; padding: 12px; overflow-x: auto; font: 12px var(--mono); white-space: pre-wrap; word-break: break-all; margin: 6px 0 0; }
+      .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+      #request-wrap, #request-hint, #canonical-wrap, #session-wrap { display: none; }
+      @media (max-width: 620px) { .step { grid-template-columns: 20px 1fr; } .step .detail { grid-column: 2; } }
+      .agent-note { margin: 30px 0 0; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 12.5px; }
+      .agent-note a { color: var(--blue); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>CIP-30-DeepLink Inspector <span class="tag">connect</span></h1>
+      <p class="sub">
+        A live tool — paste a wallet's <code>connect</code> response and watch every check a conforming dApp runs.
+        Everything runs in your browser; nothing is sent anywhere. Powered by
+        <a href="https://www.npmjs.com/package/@fluxpointstudios/cip30-deeplink-client">@fluxpointstudios/cip30-deeplink-client</a>.
+        Spec: <a href="https://github.com/cardano-foundation/CIPs/pull/1189">CIP-186 (PR #1189)</a>.
+      </p>
+
+      <div class="how">
+        <b>New here?</b>
+        <span class="n">1</span> Click an example below — it loads a real handshake and verifies it, step by step.
+        <span class="n">2</span> Try the failing ones to see each rejection, or paste your own response to debug it.
+      </div>
+
+      <div class="panel">
+        <h2><span class="step-no">1 ·</span> Try an example</h2>
+        <p class="lead">Click one — it loads a real, fixed-key <code>connect</code> response and verifies it live (bytes are reproducible from <code>conformance/connect-kat.json</code>).</p>
+        <div class="presets">
+          <button data-preset="none">✓ Valid signed connect</button>
+          <button data-preset="echoMismatch">✗ Echo mismatch (−5)</button>
+          <button data-preset="tamperSignature">✗ Tampered signature (−10)</button>
+          <button data-preset="unsigned">✗ Legacy / unsigned (−10)</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="step-no">2 ·</span> Or inspect your own response</h2>
+        <p class="lead">Paste a wallet's <code>connect</code> response URL. To decrypt + verify it you also need the dApp's X25519 secret and the request nonce — the examples fill these in for you, or generate a matched pair under <em>Build a request</em> below.</p>
+        <label for="response-url">Wallet <code>connect</code> response URL</label>
+        <textarea id="response-url" spellcheck="false" placeholder="https://your-dapp/cb?response=approved&method=connect&walletKey=…&signature=…"></textarea>
+        <div class="row">
+          <div>
+            <label for="dapp-secret">dApp X25519 secret <span style="color:var(--muted)">(hex or base64url)</span></label>
+            <input id="dapp-secret" spellcheck="false" placeholder="64-hex or base64url" />
+          </div>
+          <div>
+            <label for="req-nonce">Request nonce <span style="color:var(--muted)">(base64url — checks the echo)</span></label>
+            <input id="req-nonce" spellcheck="false" placeholder="base64url(24 bytes)" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="btn-inspect" class="primary">Inspect →</button>
+          <span class="tip">runs the exact checks the SDK's <code>resume()</code> does</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Verification</h2>
+        <div id="results">
+          <div id="verdict" class="verdict empty">↑ Click an example, or hit “Inspect” to verify the response above</div>
+          <div id="steps"></div>
+          <div id="canonical-wrap">
+            <label>Canonical subject (the bytes the wallet signed — the first line break is the <code>cip30dl-v1\n</code> domain separator)</label>
+            <pre id="canonical"></pre>
+          </div>
+          <div id="session-wrap">
+            <label>Decrypted session</label>
+            <pre id="session"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Wallet devs: build a request to test your wallet</h2>
+        <p class="lead">Generates a fresh request with a known dApp key + nonce (and fills the secret + nonce fields above). Run it through your wallet, paste the response into step 2, and Inspect — it verifies against the key you just generated.</p>
+        <label for="fresh-redirect">redirect URL</label>
+        <input id="fresh-redirect" spellcheck="false" value="https://aegis.example/cb" />
+        <div class="actions"><button id="btn-build">Build request</button></div>
+        <p id="request-hint" class="hint">Copy this into your wallet's deep-link handler. The dApp secret + nonce above now match it, so the response will verify here.</p>
+        <div id="request-wrap">
+          <label>Connect request URL</label>
+          <pre id="request-url"></pre>
+        </div>
+      </div>
+
+      <footer class="agent-note">
+        🤖 Building on this with an AI agent (Claude Code, Cursor, etc.)? Machine-readable integration docs:
+        <a href="/llms.txt">/llms.txt</a> · <a href="/llms-full.txt">/llms-full.txt</a>
+      </footer>
+    </div>
+    <script type="module" src="./inspector.js"></script>
+  </body>
+</html>
