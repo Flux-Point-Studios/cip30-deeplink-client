@@ -1,0 +1,102 @@
+commit d20b3f1545c032fc31efe52fdbfae1aa626b4eb4
+Author: decimalist <129120814+realdecimalist@users.noreply.github.com>
+Date:   Wed Jun 24 18:19:19 2026 -0600
+
+    feat(cip186): sign the connect response + echo the request nonce
+    
+    The wallet previously returned an unsigned connect response, so a dApp had
+    to adopt the session JSON on trust. Emit a verifiable handshake instead:
+    buildConnectApprovedSigned adds a `method=connect` domain tag and an `echo`
+    of the dApp's request nonce, then Ed25519-signs the canonical subject with
+    the session key — letting the dApp verify integrity, bind the pairing to its
+    request, and pin the signingPublicKey for every later response.
+    
+    - attestation: add buildConnectApprovedSigned; drop the now-unused unsigned
+      buildConnectApproved
+    - deeplink_service: require the request nonce (-9 if absent) and emit the
+      signed connect response
+    - tests: connect response is signed over the canonical subject + echoes the
+      nonce; missing-nonce reject; pure-builder method/echo/signature coverage
+      (cip186 suite green)
+    
+    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+diff --git a/lib/cip186/attestation.dart b/lib/cip186/attestation.dart
+index 0aa18b4..6556358 100644
+--- a/lib/cip186/attestation.dart
++++ b/lib/cip186/attestation.dart
+@@ -46,22 +46,33 @@ class AttestationBuilder {
+     return _appendQuery(base, {'signature': _b64u(signature)});
+   }
+ 
+-  /// Constructs the `connect` approved response URL (spec §connect). Unsigned:
+-  /// it carries the wallet X25519 public key plus the box-encrypted session
+-  /// JSON, which itself bootstraps the `signingPublicKey` the dApp uses to
+-  /// verify every SUBSEQUENT response.
+-  static Uri buildConnectApproved({
++  /// Constructs the `connect` approved response URL (spec §connect), Ed25519
++  /// signed over its canonical subject. Beyond the wallet X25519 key + the
++  /// box-encrypted session JSON, it adds a `method=connect` domain tag and an
++  /// `echo` of the dApp's request nonce, then signs the
++  /// (method, walletKey, nonce, echo, payload) base — so the dApp can verify the
++  /// response is untampered, bound to its request, and pin the `signingPublicKey`
++  /// the payload advertises for every SUBSEQUENT response. [sign] receives the
++  /// canonical subject (signature stripped, keys sorted) and returns the 64-byte
++  /// detached signature.
++  static Uri buildConnectApprovedSigned({
+     required Uri redirect,
+     required Uint8List walletKey,
+     required Uint8List walletNonce,
+     required Uint8List ciphertext,
++    required Uint8List echoNonce,
++    required Uint8List Function(String canonicalSubject) sign,
+   }) {
+-    return _appendQuery(redirect, {
++    final base = _appendQuery(redirect, {
+       'response': 'approved',
++      'method': 'connect',
+       'walletKey': _b64u(walletKey),
+       'nonce': _b64u(walletNonce),
++      'echo': _b64u(echoNonce),
+       'payload': _b64u(ciphertext),
+     });
++    final signature = sign(canonicalSubject(base));
++    return _appendQuery(base, {'signature': _b64u(signature)});
+   }
+ 
+   /// Constructs a `rejected` response URL with the spec error envelope.
+diff --git a/lib/cip186/deeplink_service.dart b/lib/cip186/deeplink_service.dart
+index 6fcc9b5..d48684c 100644
+--- a/lib/cip186/deeplink_service.dart
++++ b/lib/cip186/deeplink_service.dart
+@@ -580,6 +580,12 @@ class Cip186DeepLinkService {
+       return _rejectConnect(
+           request, Cip186ErrorCode.unsupportedVersion, 'connect missing dappKey');
+     }
++    // The request nonce is mandatory: it is echoed (signed) in the response so
++    // the dApp can bind the pairing to this attempt and reject replays.
++    if (request.nonceBytes == null) {
++      return _rejectConnect(
++          request, Cip186ErrorCode.unsupportedVersion, 'connect missing nonce');
++    }
+     // The dApp origin host binds the session signing key. It is carried in the
+     // base64url dapp-info-json (spec §connect).
+     final dappInfoRaw = request.params['dapp'];
+@@ -665,11 +671,16 @@ class Cip186DeepLinkService {
+     );
+ 
+     return DeepLinkOutcome.connectApproved(
+-      responseUri: AttestationBuilder.buildConnectApproved(
++      responseUri: AttestationBuilder.buildConnectApprovedSigned(
+         redirect: request.redirectUri!,
+         walletKey: walletX.publicKey.asTypedList,
+         walletNonce: walletNonce,
+         ciphertext: ciphertext,
++        echoNonce: request.nonceBytes!,
++        sign: (subject) => signCanonicalSubject(
++          signingKey: signingKey,
++          canonicalSubject: subject,
++        ),
+       ),
+       establishedSession: Cip186Session(
+         walletX25519Secret: walletX.asTypedList,

@@ -1,0 +1,58 @@
+{
+  "name": "signed-connect known-answer vector (CIP-0186 §connect, hardened)",
+  "note": "All inputs fixed and non-secret. A conforming wallet given these keys/nonces MUST reproduce signature + responseUrl byte-for-byte. A conforming dApp MUST accept the valid case and reject the negatives.",
+  "inputs": {
+    "redirect": "https://aegis.example/cb",
+    "dappX25519Secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+    "dappX25519Public_b64url": "pOCSkrZRwni5dyxWn1-puxPZBrRqtoyd-dwrRAn4ogk",
+    "walletX25519Secret_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+    "walletX25519Public_b64url": "zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk",
+    "walletEd25519Seed_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+    "signingPublicKey_b64url": "7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E",
+    "requestNonce_b64url": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    "responseNonce_b64url": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF",
+    "sessionJson": {
+      "session": "c2Vzc2lvbi1pZC1jb25uZWN0LWthdC0wMDAwMDAwMDAwMDAwMDA",
+      "network": 0,
+      "addresses": [
+        "addr_test1qzconnectkatexampleaddr00000000000000000000000000000000000000000000000000000"
+      ],
+      "chain": "cardano:preprod",
+      "walletId": "lace",
+      "expiresAt": 1810000000,
+      "signingPublicKey": "7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9E"
+    }
+  },
+  "derived": {
+    "payload_b64url": "P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg",
+    "echo_b64url": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    "canonicalSubject_utf8": "cip30dl-v1\nhttps://aegis.example/cb?echo=BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE&method=connect&nonce=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF&payload=P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg&response=approved&walletKey=zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk",
+    "signature_b64url": "9YMkhxwJqYUD0yI1Yhcj1_qoIcJoldtbQTQF0RT4_mABIGnlucKd8Ir6g9VIiOYZpw3wL4_clZ5GAyNG96-qCQ",
+    "responseUrl_valid": "https://aegis.example/cb?response=approved&method=connect&walletKey=zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk&nonce=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF&echo=BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE&payload=P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg&signature=9YMkhxwJqYUD0yI1Yhcj1_qoIcJoldtbQTQF0RT4_mABIGnlucKd8Ir6g9VIiOYZpw3wL4_clZ5GAyNG96-qCQ"
+  },
+  "cases": [
+    {
+      "case": "valid",
+      "expect": "accept",
+      "dapp_expectedNonce_b64url": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
+    },
+    {
+      "case": "echo_mismatch",
+      "expect": "reject",
+      "errorCode": -5,
+      "responseUrl": "https://aegis.example/cb?response=approved&method=connect&walletKey=zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk&nonce=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF&echo=CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ&payload=P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg&signature=WVq9M8pqVNbk1kmsriAJFciNvtcNEKuzUeCkvOs7SfUvyKDNN6vnPAtTGu2iyklVdUy3M6ID_ElevC4OUKAiAw"
+    },
+    {
+      "case": "tampered_signature",
+      "expect": "reject",
+      "errorCode": -10,
+      "responseUrl": "https://aegis.example/cb?response=approved&method=connect&walletKey=zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk&nonce=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF&echo=BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE&payload=P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg&signature=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw"
+    },
+    {
+      "case": "legacy_unsigned",
+      "expect": "reject",
+      "errorCode": -10,
+      "responseUrl": "https://aegis.example/cb?response=approved&walletKey=zo060cy2M-x7cMF4FKXHbs0CloUFDTRHRboFhw5YfVk&nonce=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUF&payload=P_8d1DthyMd6nNu82TN7IwirTdKo-nqUzbFquSNwHvoBZFwSm1scp_C9B0W76BA7p5nSUCbhGub9eh7ILPl9aXWrrWoYX3lW8zUkmugnnwKnTsGaYdKue5v7_QIkgVqBncwteT0LONE70JxjxyNGD2FJPctQl3Uel-ei6jWEXXKCaqwr2o0ad9_fScXqlebG7HhGSqn8VYVZTY0Tuq0VFveVNYgZV6iuqX5eQhVx9i_cTe7k2tVjOTT-mUSBzoSoHBpXcP5gh98x4li7mXGHUSDEaNFmd6eR0hVfPfN0CwXFUr1qgiGXcqwfDTZqLlLiXZZYIgI7KJDj-UM88xC0aprXpyT_7RDPoSeNPlVnakGQlWC5BCfEjbnNRfvkHD8fyCjoROAkgiXsPtxhZSCJbZgtnz6IvxTGOkxzmgIv1li6jIkYHWomJg"
+    }
+  ]
+}
