@@ -25,11 +25,25 @@ Interactive: the [inspector playground](../playground/).
    assert it equals `derived.payload_b64url`.
 3. Build the canonical subject (below) over the response params; assert it equals
    `derived.canonicalSubject_utf8`.
-4. Ed25519-sign that subject; assert it equals `derived.signature_b64url` (Ed25519 is deterministic).
+4. Sign that subject and **verify** it against `signingPublicKey`. If your Ed25519 is deterministic
+   (RFC 8032 — tweetnacl/libsodium/pynacl), it also equals `derived.signature_b64url` byte-for-byte;
+   see the note below if it doesn't.
 5. Drive each `cases[]` entry through your dApp-side verifier: `valid` ⇒ accept; `echo_mismatch` ⇒
    `-5`; `tampered_signature` / `legacy_unsigned` ⇒ `-10`.
 
-If all five hold, your wallet output is byte-identical to what every conforming dApp expects.
+The canonical subject and every non-signature field are byte-identical for every conforming wallet.
+
+### Deterministic vs randomized Ed25519
+
+`derived.signature_b64url` is a **deterministic** Ed25519 known answer. Implementations using
+**randomized / hedged** Ed25519 (Apple **CryptoKit**, BoringSSL hedged mode, many HSMs — permitted by
+[RFC 8032 §8.5](https://datatracker.ietf.org/doc/html/rfc8032#section-8.5)) produce a **different but
+equally valid** signature over the same message. This is fully interoperable: a conforming verifier
+(this SDK, the inspector) checks `Ed25519.verify(signature, canonicalSubject, signingPublicKey)`, it
+does **not** compare signature bytes. So the conformance rule is *"the signature verifies"*, not
+*"the bytes match this KAT"*. Byte-match the KAT only if your signer is deterministic; otherwise
+verify-check your own output and verify the KAT's signature against its `signingPublicKey`. (Thanks to
+the Gero team for surfacing this from a CryptoKit implementation.)
 
 ## The canonical subject (the one part that bites)
 

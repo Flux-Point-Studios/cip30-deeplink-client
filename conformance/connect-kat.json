@@ -1,6 +1,6 @@
 {
   "name": "signed-connect known-answer vector (CIP-0186 §connect, hardened)",
-  "note": "All inputs fixed and non-secret. A conforming wallet given these keys/nonces MUST reproduce signature + responseUrl byte-for-byte. A conforming dApp MUST accept the valid case and reject the negatives.",
+  "note": "All inputs fixed and non-secret. The canonical subject and every non-signature field are byte-exact for any conforming wallet. The signature here is a DETERMINISTIC Ed25519 known answer (RFC 8032; tweetnacl/libsodium/pynacl reproduce it byte-for-byte). Implementations using RANDOMIZED/hedged Ed25519 (e.g. Apple CryptoKit, RFC 8032 §8.5) produce DIFFERENT but equally valid signature bytes — so conformance is \"the signature VERIFIES against signingPublicKey\", NOT \"the bytes match this KAT\". A conforming dApp MUST accept the valid case and reject the negatives.",
   "inputs": {
     "redirect": "https://aegis.example/cb",
     "dappX25519Secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
