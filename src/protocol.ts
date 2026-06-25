@@ -10,7 +10,7 @@ import {
   utf8Encode,
 } from './base64url.js';
 import { canonicalSubjectCandidates } from './canonical.js';
-import { boxOpen, boxSeal, verifyEd25519 } from './crypto.js';
+import { boxOpen, boxSeal, bytesEqual, verifyEd25519 } from './crypto.js';
 import {
   DeepLinkRejection,
   type DappInfo,
@@ -139,18 +139,60 @@ export function throwIfRejected(params: URLSearchParams): void {
   }
 }
 
-/** Decode + adopt a `connect` response into a Session (throws on rejection). */
+/**
+ * Decode + adopt a `connect` response into a Session (throws on rejection).
+ *
+ * Fail-closed authentication of the pairing handshake. The response MUST carry:
+ *   - `method=connect` — domain separation, so a signature lifted from a signTx
+ *     (or any other) reply can't be re-presented as a connect;
+ *   - `signature` — the wallet's Ed25519 signature over the canonical subject
+ *     (sig-stripped, key-sorted query). It covers `walletKey`, `method`, `echo`
+ *     and the `payload` ciphertext, so it is both proof-of-possession of the
+ *     session signing key advertised inside the payload AND whole-response
+ *     integrity;
+ *   - `echo` — the exact 24-byte nonce this client put in the matching request,
+ *     binding the response to this attempt so a captured one can't be replayed.
+ *
+ * We box-open the payload to recover `signingPublicKey`, verify the signature
+ * against it, then confirm the echo. Any missing or non-verifying element
+ * throws, so an unsigned, tampered, or replayed connect can never seat a
+ * session.
+ *
+ * Trust boundary (honest scope): connect is first contact, so there is no
+ * pre-shared wallet key — the signature is checked against the very
+ * `signingPublicKey` carried in the payload. That proves the response is
+ * internally consistent, untampered, and bound to THIS request (echo) and
+ * method, and it PINS that key for the session. It does not, on its own, prove
+ * the responder is the user's genuine wallet; that rests on the OS routing the
+ * scheme to it plus the in-wallet consent screen. What the pin buys is that
+ * every later signTx response — verified against this same key — is provably
+ * from the same key-holder this connect established.
+ */
 export function decodeConnectResponse(args: {
   responseUrl: string;
   dappSecretKey: Uint8Array;
+  /** The 24-byte nonce this client placed in the matching `connect` request. */
+  expectedNonce: Uint8Array;
 }): Session {
   const params = paramsOf(args.responseUrl);
   throwIfRejected(params);
   const walletKeyB64 = params.get('walletKey');
   const payloadB64 = params.get('payload');
   const nonceB64 = params.get('nonce');
+  const signatureB64 = params.get('signature');
+  const echoB64 = params.get('echo');
   if (!walletKeyB64 || !payloadB64 || !nonceB64) {
     throw new Error('connect response missing walletKey/payload/nonce');
+  }
+  // Domain separation: a connect response must declare itself one. `method` is
+  // inside the signed canonical subject, so a reply signed for another method
+  // would fail verification below regardless — this is the explicit, legible
+  // form of that check and also rejects a method-less reply outright.
+  if (params.get('method') !== 'connect') {
+    throw new DeepLinkRejection(-10, 'connect response missing method=connect');
+  }
+  if (!signatureB64 || !echoB64) {
+    throw new DeepLinkRejection(-10, 'connect response is unsigned');
   }
   const plaintext = boxOpen(
     b64uDecode(payloadB64),
@@ -160,6 +202,20 @@ export function decodeConnectResponse(args: {
   );
   if (!plaintext) throw new Error('connect response decryption failed');
   const json = JSON.parse(utf8Decode(plaintext)) as Omit<Session, 'walletKey'>;
+  // Proof-of-possession + integrity: the session signing key (advertised inside
+  // the just-decrypted payload) must have signed the canonical subject.
+  const signature = b64uDecode(signatureB64);
+  const signingPublicKey = b64uDecode(json.signingPublicKey);
+  const signatureValid = canonicalSubjectCandidates(args.responseUrl).some(
+    (subject) => verifyEd25519(utf8Encode(subject), signature, signingPublicKey),
+  );
+  if (!signatureValid) {
+    throw new DeepLinkRejection(-10, 'connect response signature invalid');
+  }
+  // Replay binding: the wallet must echo the exact nonce we just sent.
+  if (!bytesEqual(b64uDecode(echoB64), args.expectedNonce)) {
+    throw new DeepLinkRejection(-5, 'connect response nonce echo mismatch');
+  }
   return { ...json, walletKey: walletKeyB64 };
 }
 
@@ -179,6 +235,11 @@ export function decodeSignTxResponse(args: {
 }): { witnessSet: string; signatureValid: boolean; txHash?: string } {
   const params = paramsOf(args.responseUrl);
   throwIfRejected(params);
+  // Method confusion: a `connect` response seats a session and is authenticated
+  // differently; it must never be consumed by the signTx path.
+  if (params.get('method') === 'connect') {
+    throw new Error('signTx response carries method=connect');
+  }
   const payloadB64 = params.get('payload');
   const nonceB64 = params.get('nonce');
   const signatureB64 = params.get('signature');

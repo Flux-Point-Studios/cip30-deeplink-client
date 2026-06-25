@@ -26,7 +26,9 @@ export type ResumeResult =
   | { kind: 'signTx'; result: SignTxResult }
   | null;
 
-type Pending = { kind: 'connect' } | { kind: 'signTx'; commitHex: string };
+type Pending =
+  | { kind: 'connect'; nonceB64: string }
+  | { kind: 'signTx'; commitHex: string };
 
 function defaultStorage(): KeyValueStore {
   const ls = (globalThis as { localStorage?: KeyValueStore }).localStorage;
@@ -127,6 +129,10 @@ export class DeepLinkClient {
    */
   async connect(dappInfo: DappInfo): Promise<void> {
     const dapp = this.ensureDappKeyPair();
+    // Persist the request nonce: the wallet must echo it in the (signed) connect
+    // response, and resume() compares the echo against this to bind the pairing
+    // to this attempt and reject replays.
+    const nonce = randomNonce();
     const url = buildConnectUrl({
       scheme: this.scheme,
       httpsPrefix: this.httpsPrefix,
@@ -134,9 +140,9 @@ export class DeepLinkClient {
       redirectUrl: this.redirectUrl,
       dappInfo,
       dappPublicKey: dapp.publicKey,
-      nonce: randomNonce(),
+      nonce,
     });
-    this.setPending({ kind: 'connect' });
+    this.setPending({ kind: 'connect', nonceB64: b64uEncode(nonce) });
     this.navigate(url);
   }
 
@@ -216,6 +222,7 @@ export class DeepLinkClient {
         const session = decodeConnectResponse({
           responseUrl: url,
           dappSecretKey: dapp.secretKey,
+          expectedNonce: b64uDecode(pending.nonceB64),
         });
         this.storage.setItem(this.kSession, JSON.stringify(session));
         return { kind: 'connect', session };

@@ -61,7 +61,12 @@ The wallet returns a **witness set**, not a signed tx. Splice it into the body w
 
 ### Verification
 
-Every `signTx` response carries the wallet's Ed25519 signature over the canonical subject, keyed by the `signingPublicKey` advertised at `connect`. `resume()` verifies it and **rejects** the result if it does not check out — a returned witness is always signature-verified.
+Both legs of the handshake are authenticated, and `resume()` **rejects** anything that doesn't check out:
+
+- **connect** — the response must carry the wallet's Ed25519 signature over the canonical subject (which covers `walletKey`, `method`, the encrypted payload, and an `echo` of the request nonce), a `method=connect` domain tag, and that nonce echo. The SDK decrypts the session, verifies the signature against the `signingPublicKey` it advertises, and confirms the echo — so an unsigned, tampered, or replayed connect can never seat a session, and the verified key is pinned for the rest of the session.
+- **signTx** — every response is Ed25519-signed over the canonical subject, keyed by the `signingPublicKey` pinned at connect. A returned witness is always signature-verified.
+
+Connect is first contact, so the signature proves the response is consistent, untampered, and bound to this request — not, on its own, that the responder is the user's genuine wallet (that rests on the OS routing the scheme plus the in-wallet consent screen). What the pin buys is that every later `signTx` reply is provably from the same key-holder this connect established.
 
 ## API surface
 
