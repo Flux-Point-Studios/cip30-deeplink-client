@@ -36,3 +36,11 @@ export {
   SUBJECT_DOMAIN_SEPARATOR,
 } from './canonical.js';
 export { b64uDecode, b64uEncode } from './base64url.js';
+
+// Wallet registry — known deep-link wallets the picker can target directly.
+export {
+  WALLET_REGISTRY,
+  lookupWallet,
+  type WalletRegistryEntry,
+  type WalletStatus,
+} from './wallets.js';

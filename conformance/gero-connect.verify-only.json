@@ -1,0 +1,18 @@
+{
+  "name": "Gero signed-connect VERIFY-ONLY fixture (CIP-0186 §connect)",
+  "wallet": "gero",
+  "verifyOnly": true,
+  "signFormat": "spec",
+  "note": "Gero (iOS) signs the connect response with Apple CryptoKit's HEDGED Ed25519 (RFC 8032 §8.5): the signature bytes differ on every emit even for identical input, so this is NOT a known-answer vector. Conformance = recompute the canonical subject (sign_006) over the emitted connect URL minus `signature`, then check the Ed25519 signature VERIFIES against `signingPublicKey_b64url` — never byte-match. A conforming verifier MUST accept this case and reject the negatives (tampered query, swapped key, wrong echo).",
+  "_fill": "Replace the three __PLACEHOLDER__ values below with a real capture off the Gero test dApp. Test keys only — non-secret. signingPublicKey is the session Ed25519 key Gero publishes inside the (unsealed) payload; supply it directly, OR supply dappX25519Secret_hex so the verifier can unseal the payload and extract it itself.",
+  "inputs": {
+    "emittedConnectUrl": "__PLACEHOLDER_full_redirect_with_response_method_walletKey_nonce_echo_payload_signature__",
+    "signingPublicKey_b64url": "__PLACEHOLDER_session_Ed25519_signingPublicKey_b64url__",
+    "dappX25519Secret_hex": "__OPTIONAL_test_dapp_x25519_secret_hex_to_unseal_payload__"
+  },
+  "expect": {
+    "signatureVerifies": true,
+    "echoEqualsRequestNonce": true,
+    "tamperedQueryRejected": true
+  }
+}
